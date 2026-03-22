@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'views/group_screen.dart';
+import 'views/home_screen.dart';
+import 'views/project_hub_screen.dart';
+import 'views/task_screen.dart';
+import 'views/schedule_screen.dart';
 import 'services/task_service.dart';
+import 'services/project_service.dart';
+import 'services/schedule_service.dart';
 import 'services/group_service.dart';
 
 void main() async {
@@ -19,12 +26,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: TestScreen(),
-    );
+    return const MaterialApp(home: GroupScreen());
   }
 }
 
+// Keep TestScreen for quick backend testing if needed later.
 class TestScreen extends StatefulWidget {
   const TestScreen({super.key});
 
@@ -34,13 +40,14 @@ class TestScreen extends StatefulWidget {
 
 class _TestScreenState extends State<TestScreen> {
   final TaskService taskService = TaskService();
+  final ProjectService projectService = ProjectService();
+  final ScheduleService scheduleService = ScheduleService();
   final GroupService groupService = GroupService();
 
   final TextEditingController groupController = TextEditingController();
   final TextEditingController taskController = TextEditingController();
 
   List tasks = [];
-
   String? currentGroupId;
 
   Future<void> createGroup() async {
@@ -59,6 +66,7 @@ class _TestScreenState extends State<TestScreen> {
     if (currentGroupId == null) return;
 
     final data = await taskService.getTasks(currentGroupId!);
+
     setState(() {
       tasks = data;
     });
@@ -67,8 +75,22 @@ class _TestScreenState extends State<TestScreen> {
   Future<void> addTask() async {
     if (taskController.text.isEmpty || currentGroupId == null) return;
 
-    await taskService.createTask(taskController.text, currentGroupId!);
+    await taskService.createTask(
+      title: taskController.text,
+      groupId: currentGroupId!,
+    );
+
     taskController.clear();
+    await loadTasks();
+  }
+
+  Future<void> seedAllSampleData() async {
+    if (currentGroupId == null) return;
+
+    await taskService.seedSampleTasks(currentGroupId!);
+    await projectService.seedSampleProjects(currentGroupId!);
+    await scheduleService.seedSampleSchedule(currentGroupId!);
+
     await loadTasks();
   }
 
@@ -80,42 +102,31 @@ class _TestScreenState extends State<TestScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // CREATE GROUP
             TextField(
               controller: groupController,
-              decoration: const InputDecoration(
-                labelText: "Enter Group Name",
-              ),
+              decoration: const InputDecoration(labelText: "Enter Group Name"),
             ),
             ElevatedButton(
               onPressed: createGroup,
               child: const Text("Create Group"),
             ),
-
             const SizedBox(height: 20),
-
-            // TASK INPUT
             TextField(
               controller: taskController,
-              decoration: const InputDecoration(
-                labelText: "Enter Task",
-              ),
+              decoration: const InputDecoration(labelText: "Enter Task"),
             ),
-            ElevatedButton(
-              onPressed: addTask,
-              child: const Text("Add Task"),
-            ),
-
+            ElevatedButton(onPressed: addTask, child: const Text("Add Task")),
             const SizedBox(height: 20),
-
+            ElevatedButton(
+              onPressed: seedAllSampleData,
+              child: const Text("Seed Mockup Data"),
+            ),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: loadTasks,
               child: const Text("Load Tasks"),
             ),
-
             const SizedBox(height: 20),
-
-            // TASK LIST
             Expanded(
               child: ListView.builder(
                 itemCount: tasks.length,
@@ -130,6 +141,60 @@ class _TestScreenState extends State<TestScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class MainApp extends StatefulWidget {
+  final String groupId;
+  final String groupName;
+
+  const MainApp({super.key, required this.groupId, required this.groupName});
+
+  @override
+  State<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends State<MainApp> {
+  int _selectedIndex = 0;
+
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      HomeScreen(groupId: widget.groupId),
+      ProjectHubScreen(groupId: widget.groupId),
+      TaskScreen(groupId: widget.groupId, groupName: widget.groupName),
+      ScheduleScreen(groupId: widget.groupId),
+    ];
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.folder), label: 'Projects'),
+          BottomNavigationBarItem(icon: Icon(Icons.checklist), label: 'Tasks'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: 'Schedule',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.blue,
+        onTap: _onItemTapped,
       ),
     );
   }
