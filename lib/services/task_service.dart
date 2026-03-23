@@ -5,46 +5,109 @@ import '../models/task_priority.dart';
 class TaskService {
   SupabaseClient get _client => Supabase.instance.client;
 
-  /// Legacy shape used by the dev screen: title + group only.
-  Future<void> createTask(String title, String groupId) async {
-    await createTaskDetailed(
-      groupId: groupId,
-      title: title,
-    );
-  }
+  // Task model fields in 'tasks' table:
+  // id, title, description, subject, priority, due_date, status, group_id, created_at
 
-  /// Full insert matching [supabase/schema.sql].
-  Future<void> createTaskDetailed({
-    required String groupId,
+  Future<String?> createTask({
     required String title,
-    String subject = 'GENERAL',
-    TaskPriority priority = TaskPriority.med,
+    required String groupId,
+    String? description,
+    String? subject,
+    String priority = 'Medium',
     DateTime? dueDate,
-    String status = 'pending',
+    String status = 'Pending',
   }) async {
-    final uid = _client.auth.currentUser?.id;
-    final row = <String, dynamic>{
-      'group_id': groupId,
-      'title': title.trim(),
-      'subject': subject.trim().isEmpty ? 'GENERAL' : subject.trim().toUpperCase(),
-      'priority': _priorityToDb(priority),
+    final response = await _client.from('tasks').insert({
+      'title': title,
+      'description': description,
+      'subject': subject,
+      'priority': priority,
+      'due_date': dueDate?.toIso8601String(),
       'status': status,
-      if (dueDate != null) 'due_date': _formatDate(dueDate),
-    };
-    if (uid != null) {
-      row['user_id'] = uid;
+      'group_id': groupId,
+    }).select();
+
+    if (response.isNotEmpty) {
+      return response[0]['id']?.toString();
     }
-    await _client.from('tasks').insert(row);
+    return null;
   }
 
   Future<List<dynamic>> getTasks(String groupId) async {
-    final response = await _client
+    final data = await _client
         .from('tasks')
         .select()
         .eq('group_id', groupId)
-        .order('created_at', ascending: false);
+        .order('due_date', ascending: true);
 
-    return response;
+    return data;
+  }
+
+  Future<List<dynamic>> getTasksByStatus(String groupId, String status) async {
+    final data = await _client
+        .from('tasks')
+        .select()
+        .eq('group_id', groupId)
+        .eq('status', status)
+        .order('due_date', ascending: true);
+
+    return data;
+  }
+
+  Future<List<dynamic>> getUpcomingDeadlines(
+    String groupId, {
+    int withinDays = 7,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final to = now.add(Duration(days: withinDays));
+
+    final data = await _client
+        .from('tasks')
+        .select()
+        .eq('group_id', groupId)
+        .gte('due_date', now.toIso8601String())
+        .lte('due_date', to.toIso8601String())
+        .order('due_date', ascending: true);
+
+    return data;
+  }
+
+  Future<List<dynamic>> getSemesterTasks(
+    String groupId,
+    String semesterTag,
+  ) async {
+    // if semester is stored in subject or inside group details, this function can be adapted
+    final data = await _client
+        .from('tasks')
+        .select()
+        .eq('group_id', groupId)
+        .like('subject', '%$semesterTag%')
+        .order('due_date', ascending: true);
+
+    return data;
+  }
+
+  Future<void> updateTask({
+    required String taskId,
+    String? title,
+    String? description,
+    String? subject,
+    String? priority,
+    DateTime? dueDate,
+    String? status,
+  }) async {
+    final Map<String, dynamic> payload = {};
+
+    if (title != null) payload['title'] = title;
+    if (description != null) payload['description'] = description;
+    if (subject != null) payload['subject'] = subject;
+    if (priority != null) payload['priority'] = priority;
+    if (dueDate != null) payload['due_date'] = dueDate.toIso8601String();
+    if (status != null) payload['status'] = status;
+
+    if (payload.isEmpty) return;
+
+    await _client.from('tasks').update(payload).eq('id', taskId);
   }
 
   Future<void> updateTaskStatus(String taskId, String status) async {
@@ -55,21 +118,102 @@ class TaskService {
     await _client.from('tasks').delete().eq('id', taskId);
   }
 
-  static String _formatDate(DateTime d) {
+  Future<Map<String, int>> getTaskCounts(String groupId) async {
+    final allTasks = await getTasks(groupId);
+    final pending = await getTasksByStatus(groupId, 'Pending');
+    final done = await getTasksByStatus(groupId, 'Done');
+
+    return {
+      'total': allTasks.length,
+      'pending': pending.length,
+      'done': done.length,
+    };
+  }
+
+  Future<void> seedSampleTasks(String groupId) async {
+    final now = DateTime.now().toUtc();
+    final samples = [
+      {
+        'title': 'Final Project Proposal',
+        'description': 'Mobile Computing final project proposal submission.',
+        'subject': 'Mobile Computing',
+        'priority': 'High',
+        'due_date': now.add(const Duration(days: 2)).toIso8601String(),
+        'status': 'Pending',
+      },
+      {
+        'title': 'Database Schema Design',
+        'description': 'Design schema for the course DB systems essay task.',
+        'subject': 'Database Systems',
+        'priority': 'Medium',
+        'due_date': now.add(const Duration(days: 1)).toIso8601String(),
+        'status': 'Pending',
+      },
+      {
+        'title': 'Community Outreach Essay',
+        'description': 'Write essay for religion class outreach.',
+        'subject': 'Religion 3',
+        'priority': 'Low',
+        'due_date': now.add(const Duration(days: 5)).toIso8601String(),
+        'status': 'Pending',
+      },
+      {
+        'title': 'Problem Set 8: Integration',
+        'description': 'Complete Calc III problem set.',
+        'subject': 'Calculus III',
+        'priority': 'Medium',
+        'due_date': now.add(const Duration(days: 4)).toIso8601String(),
+        'status': 'Pending',
+      },
+      {
+        'title': 'Reading: "The Great Gatsby"',
+        'description': 'Finish literature reading.',
+        'subject': 'English Literature',
+        'priority': 'Low',
+        'due_date': now.add(const Duration(days: 7)).toIso8601String(),
+        'status': 'Pending',
+      },
+    ];
+
+    for (final t in samples) {
+      await _client.from('tasks').insert({
+        'group_id': groupId,
+        ...t,
+      });
+    }
+  }
+
+  /// Used by [TasksViewModel] — matches `tasks` table + RLS via group ownership.
+  Future<void> createTaskDetailed({
+    required String groupId,
+    required String title,
+    required String subject,
+    required TaskPriority priority,
+    required DateTime dueDate,
+    required String status,
+  }) async {
+    final d = DateTime(dueDate.year, dueDate.month, dueDate.day);
     final y = d.year.toString().padLeft(4, '0');
     final m = d.month.toString().padLeft(2, '0');
     final day = d.day.toString().padLeft(2, '0');
-    return '$y-$m-$day';
+    await _client.from('tasks').insert({
+      'group_id': groupId,
+      'title': title,
+      'subject': subject,
+      'priority': _priorityToDb(priority),
+      'due_date': '$y-$m-$day',
+      'status': status,
+    });
   }
 
   static String _priorityToDb(TaskPriority p) {
     switch (p) {
       case TaskPriority.high:
         return 'high';
-      case TaskPriority.med:
-        return 'med';
       case TaskPriority.low:
         return 'low';
+      case TaskPriority.med:
+        return 'med';
     }
   }
 }

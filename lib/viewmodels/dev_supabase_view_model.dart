@@ -56,7 +56,10 @@ class DevSupabaseViewModel extends ChangeNotifier {
     errorMessage = null;
     notifyListeners();
     try {
-      await _taskService.createTask(title.trim(), gid);
+      await _taskService.createTask(
+        title: title.trim(),
+        groupId: gid,
+      );
       await loadTasks();
     } catch (e) {
       errorMessage = e.toString();
