@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+
 import '../services/group_service.dart';
-import '../main.dart';
+import 'legacy_main_app.dart';
 
 class GroupScreen extends StatefulWidget {
   const GroupScreen({super.key});

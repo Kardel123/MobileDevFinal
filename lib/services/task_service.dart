@@ -17,7 +17,7 @@ class TaskService {
     DateTime? dueDate,
     String status = 'Pending',
   }) async {
-    final response = await supabase.from('tasks').insert({
+    final response = await _client.from('tasks').insert({
       'title': title,
       'description': description,
       'subject': subject,
@@ -34,7 +34,7 @@ class TaskService {
   }
 
   Future<List<dynamic>> getTasks(String groupId) async {
-    final data = await supabase
+    final data = await _client
         .from('tasks')
         .select()
         .eq('group_id', groupId)
@@ -44,7 +44,7 @@ class TaskService {
   }
 
   Future<List<dynamic>> getTasksByStatus(String groupId, String status) async {
-    final data = await supabase
+    final data = await _client
         .from('tasks')
         .select()
         .eq('group_id', groupId)
@@ -61,7 +61,7 @@ class TaskService {
     final now = DateTime.now().toUtc();
     final to = now.add(Duration(days: withinDays));
 
-    final data = await supabase
+    final data = await _client
         .from('tasks')
         .select()
         .eq('group_id', groupId)
@@ -77,7 +77,7 @@ class TaskService {
     String semesterTag,
   ) async {
     // if semester is stored in subject or inside group details, this function can be adapted
-    final data = await supabase
+    final data = await _client
         .from('tasks')
         .select()
         .eq('group_id', groupId)
@@ -107,15 +107,15 @@ class TaskService {
 
     if (payload.isEmpty) return;
 
-    await supabase.from('tasks').update(payload).eq('id', taskId);
+    await _client.from('tasks').update(payload).eq('id', taskId);
   }
 
   Future<void> updateTaskStatus(String taskId, String status) async {
-    await supabase.from('tasks').update({'status': status}).eq('id', taskId);
+    await _client.from('tasks').update({'status': status}).eq('id', taskId);
   }
 
   Future<void> deleteTask(String taskId) async {
-    await supabase.from('tasks').delete().eq('id', taskId);
+    await _client.from('tasks').delete().eq('id', taskId);
   }
 
   Future<Map<String, int>> getTaskCounts(String groupId) async {
@@ -176,7 +176,44 @@ class TaskService {
     ];
 
     for (final t in samples) {
-      await supabase.from('tasks').insert({'group_id': groupId, ...t});
+      await _client.from('tasks').insert({
+        'group_id': groupId,
+        ...t,
+      });
+    }
+  }
+
+  /// Used by [TasksViewModel] — matches `tasks` table + RLS via group ownership.
+  Future<void> createTaskDetailed({
+    required String groupId,
+    required String title,
+    required String subject,
+    required TaskPriority priority,
+    required DateTime dueDate,
+    required String status,
+  }) async {
+    final d = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    await _client.from('tasks').insert({
+      'group_id': groupId,
+      'title': title,
+      'subject': subject,
+      'priority': _priorityToDb(priority),
+      'due_date': '$y-$m-$day',
+      'status': status,
+    });
+  }
+
+  static String _priorityToDb(TaskPriority p) {
+    switch (p) {
+      case TaskPriority.high:
+        return 'high';
+      case TaskPriority.low:
+        return 'low';
+      case TaskPriority.med:
+        return 'med';
     }
   }
 }
