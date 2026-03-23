@@ -1,30 +1,46 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
-import 'package:campus_taskhub/main.dart';
+import 'package:campus_taskhub/services/group_service.dart';
+import 'package:campus_taskhub/services/task_service.dart';
+import 'package:campus_taskhub/viewmodels/academics_view_model.dart';
+import 'package:campus_taskhub/viewmodels/calendar_view_model.dart';
+import 'package:campus_taskhub/viewmodels/dashboard_view_model.dart';
+import 'package:campus_taskhub/viewmodels/main_shell_view_model.dart';
+import 'package:campus_taskhub/viewmodels/profile_view_model.dart';
+import 'package:campus_taskhub/viewmodels/settings_view_model.dart';
+import 'package:campus_taskhub/viewmodels/project_hub_view_model.dart';
+import 'package:campus_taskhub/viewmodels/tasks_view_model.dart';
+import 'package:campus_taskhub/views/main_shell_view.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Dashboard shows portal title', (WidgetTester tester) async {
+    final taskService = TaskService();
+    final groupService = GroupService();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => SettingsViewModel()),
+          ChangeNotifierProvider(create: (_) => MainShellViewModel()),
+          ChangeNotifierProvider(create: (_) => AcademicsViewModel()),
+          ChangeNotifierProvider(create: (_) => DashboardViewModel()),
+          ChangeNotifierProvider(
+            create: (_) => TasksViewModel(taskService, groupService),
+          ),
+          ChangeNotifierProvider(create: (_) => CalendarViewModel()),
+          ChangeNotifierProvider(create: (_) => ProjectHubViewModel()),
+          ChangeNotifierProvider(create: (_) => ProfileViewModel()),
+          Provider<GroupService>.value(value: groupService),
+          Provider<TaskService>.value(value: taskService),
+        ],
+        child: const MaterialApp(
+          home: MainShellView(),
+        ),
+      ),
+    );
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('USLS Portal'), findsOneWidget);
   });
 }

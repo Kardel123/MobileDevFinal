@@ -1,136 +1,87 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'services/task_service.dart';
+
 import 'services/group_service.dart';
+import 'services/task_service.dart';
+import 'theme/app_theme.dart';
+import 'viewmodels/academics_view_model.dart';
+import 'viewmodels/settings_view_model.dart';
+import 'viewmodels/calendar_view_model.dart';
+import 'viewmodels/dashboard_view_model.dart';
+import 'viewmodels/login_view_model.dart';
+import 'viewmodels/main_shell_view_model.dart';
+import 'viewmodels/profile_view_model.dart';
+import 'viewmodels/project_hub_view_model.dart';
+import 'viewmodels/tasks_view_model.dart';
+import 'views/auth/auth_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
     url: 'https://tfbsttdoqxyszpmsnvve.supabase.co',
-    anonKey: 'sb_publishable_TwGpM6tviOG4MsGQG8cM-w_a_IVGiq-',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmYnN0dGRvcXh5c3pwbXNudnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3NTAzNjMsImV4cCI6MjA4OTMyNjM2M30.setejUvdcHYKBm0UQs7q-hhFHyybz3Yx6iaEsoLCOTk',
   );
 
-  runApp(const MyApp());
+  runApp(const CampusTaskHubApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+/// Root widget: provides ViewModels (MVVM) and app-wide theming.
+class CampusTaskHubApp extends StatelessWidget {
+  const CampusTaskHubApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: TestScreen(),
+    final taskService = TaskService();
+    final groupService = GroupService();
+
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => SettingsViewModel()),
+        ChangeNotifierProvider(create: (_) => LoginViewModel()),
+        ChangeNotifierProvider(create: (_) => MainShellViewModel()),
+        ChangeNotifierProvider(create: (_) => AcademicsViewModel()),
+        ChangeNotifierProvider(create: (_) => DashboardViewModel()),
+        ChangeNotifierProvider(
+          create: (_) => TasksViewModel(taskService, groupService),
+        ),
+        ChangeNotifierProxyProvider<TasksViewModel, CalendarViewModel>(
+          create: (_) => CalendarViewModel(),
+          update: (_, tasks, cal) {
+            cal!.syncTaskDeadlines(tasks.allTasks);
+            return cal;
+          },
+        ),
+        ChangeNotifierProvider(create: (_) => ProjectHubViewModel()),
+        ChangeNotifierProvider(create: (_) => ProfileViewModel()),
+        Provider<GroupService>.value(value: groupService),
+        Provider<TaskService>.value(value: taskService),
+      ],
+      child: const _ThemedApp(),
     );
   }
 }
 
-class TestScreen extends StatefulWidget {
-  const TestScreen({super.key});
-
-  @override
-  State<TestScreen> createState() => _TestScreenState();
-}
-
-class _TestScreenState extends State<TestScreen> {
-  final TaskService taskService = TaskService();
-  final GroupService groupService = GroupService();
-
-  final TextEditingController groupController = TextEditingController();
-  final TextEditingController taskController = TextEditingController();
-
-  List tasks = [];
-
-  String? currentGroupId;
-
-  Future<void> createGroup() async {
-    if (groupController.text.isEmpty) return;
-
-    final id = await groupService.createGroup(groupController.text);
-
-    setState(() {
-      currentGroupId = id;
-    });
-
-    groupController.clear();
-  }
-
-  Future<void> loadTasks() async {
-    if (currentGroupId == null) return;
-
-    final data = await taskService.getTasks(currentGroupId!);
-    setState(() {
-      tasks = data;
-    });
-  }
-
-  Future<void> addTask() async {
-    if (taskController.text.isEmpty || currentGroupId == null) return;
-
-    await taskService.createTask(taskController.text, currentGroupId!);
-    taskController.clear();
-    await loadTasks();
-  }
+/// Rebuilds [MaterialApp] when [SettingsViewModel] changes (theme / background).
+class _ThemedApp extends StatelessWidget {
+  const _ThemedApp();
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Campus TaskHub")),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // CREATE GROUP
-            TextField(
-              controller: groupController,
-              decoration: const InputDecoration(
-                labelText: "Enter Group Name",
-              ),
-            ),
-            ElevatedButton(
-              onPressed: createGroup,
-              child: const Text("Create Group"),
-            ),
+    final settings = context.watch<SettingsViewModel>();
 
-            const SizedBox(height: 20),
-
-            // TASK INPUT
-            TextField(
-              controller: taskController,
-              decoration: const InputDecoration(
-                labelText: "Enter Task",
-              ),
-            ),
-            ElevatedButton(
-              onPressed: addTask,
-              child: const Text("Add Task"),
-            ),
-
-            const SizedBox(height: 20),
-
-            ElevatedButton(
-              onPressed: loadTasks,
-              child: const Text("Load Tasks"),
-            ),
-
-            const SizedBox(height: 20),
-
-            // TASK LIST
-            Expanded(
-              child: ListView.builder(
-                itemCount: tasks.length,
-                itemBuilder: (context, index) {
-                  final task = tasks[index];
-                  return ListTile(
-                    title: Text(task['title'] ?? ''),
-                    subtitle: Text(task['status'] ?? ''),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+    return MaterialApp(
+      title: 'Campus TaskHub',
+      theme: buildAppTheme().copyWith(
+        scaffoldBackgroundColor: settings.lightScaffoldBackground,
       ),
+      darkTheme: buildDarkAppTheme().copyWith(
+        scaffoldBackgroundColor: settings.darkScaffoldBackground,
+      ),
+      themeMode: settings.themeMode,
+      home: const AuthGate(),
     );
   }
 }
