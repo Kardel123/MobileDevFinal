@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/deadline_item.dart';
+import '../models/student_app_context.dart';
 import '../models/task_priority.dart';
 import '../theme/app_colors.dart';
 import '../viewmodels/academics_view_model.dart';
 import '../viewmodels/dashboard_view_model.dart';
 import '../viewmodels/main_shell_view_model.dart';
 import '../viewmodels/profile_view_model.dart';
+import '../viewmodels/student_context_view_model.dart';
 import '../viewmodels/tasks_view_model.dart';
 import '../widgets/profile_avatar.dart';
 
@@ -20,7 +22,13 @@ class DashboardView extends StatelessWidget {
   Widget build(BuildContext context) {
     final vm = context.watch<DashboardViewModel>();
     final profile = context.watch<ProfileViewModel>();
+    final stud = context.watch<StudentContextViewModel>().context;
     final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final primary = stud?.primaryColor ?? AppColors.primary;
+    final accent = stud?.accentColor ?? AppColors.primaryLight;
+    final surfaceTint = Color.lerp(primary, isDark ? Colors.black : Colors.white, isDark ? 0.82 : 0.92)!;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -34,85 +42,112 @@ class DashboardView extends StatelessWidget {
                 vm: vm,
                 photoBytes: profile.profilePhotoBytes,
                 initials: profile.initials,
+                collegeName: stud?.collegeName,
+                primary: primary,
+                accent: accent,
+              ),
+              Transform.translate(
+                offset: const Offset(0, -18),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _ScheduleCard(
+                    vm: vm,
+                    primary: primary,
+                    accent: accent,
+                    surfaceTint: surfaceTint,
+                    onViewAll: () =>
+                        context.read<MainShellViewModel>().selectTab(1),
+                  ),
+                ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: _ScheduleCard(
-                vm: vm,
-                onViewAll: () =>
-                    context.read<MainShellViewModel>().selectTab(1),
-              ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Row(
                   children: [
                     Expanded(
-                      child: FilledButton.icon(
+                      child: _ActionPill(
                         onPressed: () => _showAddTaskFlow(context),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        icon: const Icon(Icons.add, size: 20),
-                        label: const Text('Add Task'),
+                        icon: Icons.add_task_rounded,
+                        label: 'Add task',
+                        background: primary,
+                        foreground: Colors.white,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _showGradesSheet(context),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        icon: const Icon(Icons.assignment_outlined, size: 20),
-                        label: const Text('Grades'),
+                      child: _ActionPill(
+                        onPressed: () => _showGradesSheet(context, stud),
+                        icon: Icons.assignment_turned_in_outlined,
+                        label: 'Grades',
+                        background: Colors.transparent,
+                        foreground: primary,
+                        borderColor: primary,
                       ),
                     ),
                   ],
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: Row(
                   children: [
                     Text(
-                      'Upcoming Deadlines',
+                      'Upcoming deadlines',
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w800,
                             color: AppColors.navyText,
+                            letterSpacing: -0.2,
                           ),
                     ),
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
+                        horizontal: 12,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE3F2FD),
+                        color: accent.withValues(alpha: isDark ? 0.2 : 0.35),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: primary.withValues(alpha: 0.35),
+                        ),
                       ),
                       child: Text(
-                        '${vm.activeDeadlineCount} ACTIVE',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF546E7A),
+                        vm.upcomingDeadlines.isEmpty
+                            ? 'FROM TASKS'
+                            : '${vm.activeDeadlineCount} active',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: primary,
+                          letterSpacing: 0.3,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              ...vm.upcomingDeadlines.map(
-                (d) => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: _DeadlineTile(deadline: d, scheme: scheme),
+              if (vm.upcomingDeadlines.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _DeadlinesEmptyState(
+                    primary: primary,
+                    accent: accent,
+                    onAddTask: () => _showAddTaskFlow(context),
+                  ),
+                )
+              else
+                ...vm.upcomingDeadlines.map(
+                  (d) => Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: _DeadlineTile(
+                      deadline: d,
+                      scheme: scheme,
+                      accent: primary,
+                    ),
+                  ),
                 ),
-              ),
               const SizedBox(height: 88),
             ],
           ),
@@ -120,6 +155,162 @@ class DashboardView extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ActionPill extends StatelessWidget {
+  const _ActionPill({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    required this.background,
+    required this.foreground,
+    this.borderColor,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final Color background;
+  final Color foreground;
+  final Color? borderColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(16),
+      elevation: background == Colors.transparent ? 0 : 2,
+      shadowColor: foreground.withValues(alpha: 0.35),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: borderColor != null
+                ? Border.all(color: borderColor!, width: 1.5)
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 20, color: foreground),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: foreground,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeadlinesEmptyState extends StatelessWidget {
+  const _DeadlinesEmptyState({
+    required this.primary,
+    required this.accent,
+    required this.onAddTask,
+  });
+
+  final Color primary;
+  final Color accent;
+  final VoidCallback onAddTask;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: CustomPaint(
+        painter: _SoftGridPainter(color: primary.withValues(alpha: 0.06)),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: primary.withValues(alpha: 0.2)),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                accent.withValues(alpha: 0.12),
+                Colors.white.withValues(alpha: 0.5),
+              ],
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(Icons.event_note_rounded, size: 44, color: primary),
+              const SizedBox(height: 12),
+              Text(
+                'No pending tasks on the radar',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.navyText,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Deadlines here mirror your Academics task list — not sample IT coursework.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.35,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onAddTask,
+                style: FilledButton.styleFrom(
+                  backgroundColor: primary,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                icon: const Icon(Icons.add, size: 20),
+                label: const Text('Add a task'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SoftGridPainter extends CustomPainter {
+  _SoftGridPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    const step = 22.0;
+    for (var x = 0.0; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
+    }
+    for (var y = 0.0; y < size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 Future<void> _showAddTaskFlow(BuildContext context) async {
@@ -172,7 +363,6 @@ Future<void> _showAddTaskFlow(BuildContext context) async {
     subjectCtrl.dispose();
   }
 
-  // Let the dialog route + IME finish unmounting before dispose / ancestor updates.
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     disposeCtrls();
     if (!context.mounted || ok != true) return;
@@ -195,11 +385,15 @@ Future<void> _showAddTaskFlow(BuildContext context) async {
   });
 }
 
-void _showGradesSheet(BuildContext context) {
+void _showGradesSheet(BuildContext context, StudentAppContext? stud) {
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
     builder: (ctx) {
+      final primary = stud?.primaryColor ?? AppColors.primary;
+      final subjects = stud?.subjects ?? const [];
+
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -207,23 +401,82 @@ void _showGradesSheet(BuildContext context) {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Grades',
-                style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.navyText,
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
+                    child: Icon(Icons.school_outlined, color: primary),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Grades',
+                          style: Theme.of(ctx).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.navyText,
+                              ),
+                        ),
+                        Text(
+                          stud != null
+                              ? stud.collegeName
+                              : 'Link your registration to see courses',
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 20),
+              if (subjects.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'No enrolled subjects in your profile yet. Complete registration or refresh after your adviser updates your load.',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      height: 1.4,
+                      fontSize: 14,
+                    ),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(ctx).height * 0.42,
+                  ),
+                  child: ListView(
+                    shrinkWrap: true,
+                    physics: const BouncingScrollPhysics(),
+                    children: [
+                      for (final s in subjects)
+                        _GradeRow(
+                          course: '${s.code} — ${s.name}',
+                          grade: '—',
+                          primary: primary,
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
               Text(
-                'Fall Semester 2026',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                'Official grades come from your registrar. Placeholder “—” until you connect a grade source.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade500,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
-              const SizedBox(height: 16),
-              const _GradeRow(course: 'Mobile Computing', grade: '1.75'),
-              const _GradeRow(course: 'Database Systems', grade: '1.50'),
-              const _GradeRow(course: 'Web Development 2', grade: '1.25'),
-              const _GradeRow(course: 'Ethics in Computing', grade: '1.00'),
             ],
           ),
         ),
@@ -233,10 +486,15 @@ void _showGradesSheet(BuildContext context) {
 }
 
 class _GradeRow extends StatelessWidget {
-  const _GradeRow({required this.course, required this.grade});
+  const _GradeRow({
+    required this.course,
+    required this.grade,
+    required this.primary,
+  });
 
   final String course;
   final String grade;
+  final Color primary;
 
   @override
   Widget build(BuildContext context) {
@@ -254,15 +512,16 @@ class _GradeRow extends StatelessWidget {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.mint,
-              borderRadius: BorderRadius.circular(8),
+              color: primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: primary.withValues(alpha: 0.25)),
             ),
             child: Text(
               grade,
-              style: const TextStyle(
-                color: AppColors.primary,
+              style: TextStyle(
+                color: primary,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -278,64 +537,141 @@ class _Header extends StatelessWidget {
     required this.vm,
     required this.photoBytes,
     required this.initials,
+    this.collegeName,
+    required this.primary,
+    required this.accent,
   });
 
   final DashboardViewModel vm;
   final Uint8List? photoBytes;
   final String initials;
+  final String? collegeName;
+  final Color primary;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.fromLTRB(20, 8, 16, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final deep = Color.lerp(primary, Colors.black, 0.28)!;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              Text(
-                vm.portalTitle,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [primary, deep],
               ),
-              const Spacer(),
-              ProfileAvatar(
-                radius: 22,
-                initials: initials,
-                photoBytes: photoBytes,
-                backgroundColor: Colors.white24,
-                initialsStyle: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Welcome back,',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-          Text(
-            vm.userName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            vm.userSubtitle,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 16, 36),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                vm.portalTitle,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              if (collegeName != null &&
+                                  collegeName!.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.18),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.25),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    collegeName!,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.2),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ProfileAvatar(
+                            radius: 26,
+                            initials: initials,
+                            photoBytes: photoBytes,
+                            backgroundColor: accent.withValues(alpha: 0.5),
+                            initialsStyle: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+                    Text(
+                      'Welcome back,',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      vm.userName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        height: 1.05,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      vm.userSubtitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        fontSize: 14,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+            ),
           ),
         ],
       ),
@@ -347,57 +683,88 @@ class _ScheduleCard extends StatelessWidget {
   const _ScheduleCard({
     required this.vm,
     required this.onViewAll,
+    required this.primary,
+    required this.accent,
+    required this.surfaceTint,
   });
 
   final DashboardViewModel vm;
   final VoidCallback onViewAll;
+  final Color primary;
+  final Color accent;
+  final Color surfaceTint;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      elevation: 6,
+      shadowColor: primary.withValues(alpha: 0.25),
+      borderRadius: BorderRadius.circular(22),
+      color: isDark ? Theme.of(context).colorScheme.surfaceContainerHigh : Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Text(
-                  "Today's Schedule",
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.navyText,
-                      ),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: surfaceTint,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(Icons.today_rounded, color: primary, size: 22),
                 ),
-                const Spacer(),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    "Today's schedule",
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.navyText,
+                          letterSpacing: -0.2,
+                        ),
+                  ),
+                ),
                 TextButton(
                   onPressed: onViewAll,
-                  child: const Text('View All'),
+                  style: TextButton.styleFrom(foregroundColor: primary),
+                  child: const Text('Week view'),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             ...vm.todaySchedule.map(
               (s) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(10),
+                    color: surfaceTint.withValues(alpha: isDark ? 0.5 : 1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: primary.withValues(alpha: 0.12),
+                    ),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        width: 4,
-                        height: 48,
+                        width: 5,
+                        height: 52,
                         decoration: BoxDecoration(
-                          color: s.accent,
-                          borderRadius: BorderRadius.circular(4),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [s.accent, s.accent.withValues(alpha: 0.55)],
+                          ),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -405,22 +772,28 @@ class _ScheduleCard extends StatelessWidget {
                             Text(
                               s.timeLabel,
                               style: TextStyle(
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w800,
                                 color: s.accent,
+                                fontSize: 13,
+                                letterSpacing: 0.2,
                               ),
                             ),
+                            const SizedBox(height: 4),
                             Text(
                               s.title,
                               style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                height: 1.2,
                               ),
                             ),
+                            const SizedBox(height: 4),
                             Text(
                               s.subtitle,
-                              style: const TextStyle(
-                                color: Color(0xFF757575),
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
                                 fontSize: 13,
+                                height: 1.2,
                               ),
                             ),
                           ],
@@ -442,22 +815,37 @@ class _DeadlineTile extends StatelessWidget {
   const _DeadlineTile({
     required this.deadline,
     required this.scheme,
+    required this.accent,
   });
 
   final DeadlineItem deadline;
   final ColorScheme scheme;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return Material(
+      elevation: 1,
+      shadowColor: accent.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(18),
+      color: Theme.of(context).cardColor,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,41 +853,48 @@ class _DeadlineTile extends StatelessWidget {
                       Text(
                         deadline.title,
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w800,
                           fontSize: 15,
+                          height: 1.2,
                         ),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Text(
                         deadline.subjectLabel,
-                        style: const TextStyle(
-                          color: Color(0xFF757575),
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
                           fontSize: 13,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  deadline.dueLabel,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                    color: deadline.dueColor(scheme),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: deadline.dueColor(scheme).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    deadline.dueLabel,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                      color: deadline.dueColor(scheme),
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
                 value: deadline.progress,
-                minHeight: 6,
-                backgroundColor: const Color(0xFFE0E0E0),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  scheme.primary,
-                ),
+                minHeight: 7,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation<Color>(accent),
               ),
             ),
           ],

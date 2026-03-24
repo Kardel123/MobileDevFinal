@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'services/group_service.dart';
+import 'services/student_profile_service.dart';
 import 'services/task_service.dart';
 import 'theme/app_theme.dart';
 import 'viewmodels/academics_view_model.dart';
@@ -13,7 +14,9 @@ import 'viewmodels/login_view_model.dart';
 import 'viewmodels/main_shell_view_model.dart';
 import 'viewmodels/profile_view_model.dart';
 import 'viewmodels/project_hub_view_model.dart';
+import 'viewmodels/student_context_view_model.dart';
 import 'viewmodels/tasks_view_model.dart';
+import 'app_keys.dart';
 import 'views/auth/auth_gate.dart';
 
 void main() async {
@@ -39,13 +42,23 @@ class CampusTaskHubApp extends StatelessWidget {
 
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(
+          create: (_) =>
+              StudentContextViewModel(StudentProfileService()),
+        ),
         ChangeNotifierProvider(create: (_) => SettingsViewModel()),
         ChangeNotifierProvider(create: (_) => LoginViewModel()),
         ChangeNotifierProvider(create: (_) => MainShellViewModel()),
         ChangeNotifierProvider(create: (_) => AcademicsViewModel()),
-        ChangeNotifierProvider(create: (_) => DashboardViewModel()),
         ChangeNotifierProvider(
           create: (_) => TasksViewModel(taskService, groupService),
+        ),
+        ChangeNotifierProxyProvider<TasksViewModel, DashboardViewModel>(
+          create: (_) => DashboardViewModel(),
+          update: (_, tasks, dash) {
+            dash!.syncDeadlinesFromTasks(tasks.allTasks);
+            return dash;
+          },
         ),
         ChangeNotifierProxyProvider<TasksViewModel, CalendarViewModel>(
           create: (_) => CalendarViewModel(),
@@ -81,7 +94,7 @@ class _ThemedApp extends StatelessWidget {
         scaffoldBackgroundColor: settings.darkScaffoldBackground,
       ),
       themeMode: settings.themeMode,
-      home: const AuthGate(),
+      home: AuthGate(key: authGateKey),
     );
   }
 }

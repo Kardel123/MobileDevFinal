@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/project_model.dart';
+import '../models/student_app_context.dart';
 
 /// Project Hub tabs and list (View: [ProjectHubView]).
 class ProjectHubViewModel extends ChangeNotifier {
   ProjectHubViewModel() {
     _tab = ProjectHubTab.active;
-    _projects = _seed();
+    _projects = _neutralPlaceholderProjects();
   }
 
   ProjectHubTab _tab = ProjectHubTab.active;
@@ -29,6 +30,19 @@ class ProjectHubViewModel extends ChangeNotifier {
   void setTab(ProjectHubTab value) {
     if (value == _tab) return;
     _tab = value;
+    notifyListeners();
+  }
+
+  /// Rebuilds sample projects so titles/tags reflect the student’s college and enrollments.
+  void applyStudentContext(StudentAppContext? ctx) {
+    _projects = ctx == null ? _neutralPlaceholderProjects() : _projectsForCollege(ctx);
+    notifyListeners();
+  }
+
+  /// After sign-out, before the next session loads context.
+  void resetForGuest() {
+    _projects = _neutralPlaceholderProjects();
+    _tab = ProjectHubTab.active;
     notifyListeners();
   }
 
@@ -58,34 +72,74 @@ class ProjectHubViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  static List<ProjectItem> _seed() {
+  static List<ProjectItem> _neutralPlaceholderProjects() {
     return const [
       ProjectItem(
-        id: '1',
-        tag: 'BRANDING',
-        title: 'USLS Club Rebranding',
-        completion: 0.75,
-        nextStep: 'Finalize color palette',
-        avatarCount: 3,
-        extraMembers: 2,
+        id: 'g1',
+        tag: 'GROUP',
+        title: 'Group milestone — check with your adviser',
+        completion: 0.4,
+        nextStep: 'Confirm submission format and deadline',
+        avatarCount: 2,
+        extraMembers: 1,
       ),
       ProjectItem(
-        id: '2',
-        tag: 'DEV',
-        title: '3D Game Conceptualization',
-        completion: 0.32,
-        nextStep: 'Database schema review',
+        id: 'g2',
+        tag: 'RESEARCH',
+        title: 'Literature / source packet',
+        completion: 0.65,
+        nextStep: 'Add two peer-reviewed references',
+        avatarCount: 1,
+        extraMembers: 0,
+      ),
+      ProjectItem(
+        id: 'g3',
+        tag: 'PORTFOLIO',
+        title: 'Portfolio or reflection set',
+        completion: 0.2,
+        nextStep: 'Draft outline for faculty review',
+        avatarCount: 3,
+        extraMembers: 0,
+      ),
+    ];
+  }
+
+  static List<ProjectItem> _projectsForCollege(StudentAppContext ctx) {
+    final words = ctx.collegeName.trim().split(RegExp(r'\s+'));
+    final short = words.isNotEmpty ? words.first : 'College';
+    final codes = ctx.subjects.map((s) => s.code.toUpperCase()).toList();
+    String tagAt(int i) {
+      if (codes.length > i) return codes[i];
+      return ['CAPSTONE', 'SYMPOSIUM', 'INITIATIVE'][i % 3];
+    }
+
+    return [
+      ProjectItem(
+        id: 'p1',
+        tag: tagAt(0),
+        title: '$short — integrative output / capstone prep',
+        completion: 0.72,
+        nextStep: 'Submit draft for faculty or program head review',
+        avatarCount: 3,
+        extraMembers: 1,
+      ),
+      ProjectItem(
+        id: 'p2',
+        tag: tagAt(1),
+        title: 'Cross-team deliverable (${ctx.collegeName})',
+        completion: 0.38,
+        nextStep: 'Align schedules and assign section owners',
         avatarCount: 2,
         extraMembers: 0,
       ),
       ProjectItem(
-        id: '3',
-        tag: 'MARKETING',
-        title: 'Advertisement Campaign',
-        completion: 0.9,
-        nextStep: 'Copywriting sign-off',
-        avatarCount: 3,
-        extraMembers: 0,
+        id: 'p3',
+        tag: tagAt(2),
+        title: '${ctx.collegeName} showcase or practicum packet',
+        completion: 0.55,
+        nextStep: 'Finalize poster, deck, or clinical checklist',
+        avatarCount: 4,
+        extraMembers: 2,
       ),
     ];
   }
