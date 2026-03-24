@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../theme/app_colors.dart';
 import '../viewmodels/academics_view_model.dart';
+import '../viewmodels/student_context_view_model.dart';
 import 'project_hub_view.dart';
 import 'tasks_view.dart';
 
@@ -13,9 +14,48 @@ class AcademicsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<AcademicsViewModel>();
+    final stud = context.watch<StudentContextViewModel>().context;
 
     return Column(
       children: [
+        if (stud != null)
+          Material(
+            color: stud.primaryColor.withValues(alpha: 0.12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: Row(
+                children: [
+                  Icon(Icons.school_outlined, color: stud.primaryColor, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          stud.programLine,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: stud.primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          stud.enrolledSubjectsSummary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: Row(

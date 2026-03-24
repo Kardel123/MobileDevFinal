@@ -6,6 +6,7 @@ import '../models/academic_task.dart';
 import '../models/task_filter.dart';
 import '../models/task_priority.dart';
 import '../theme/app_colors.dart';
+import '../viewmodels/student_context_view_model.dart';
 import '../viewmodels/tasks_view_model.dart';
 
 class TasksView extends StatefulWidget {
@@ -94,6 +95,7 @@ class _TasksViewState extends State<TasksView> {
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<TasksViewModel>();
+    final stud = context.watch<StudentContextViewModel>().context;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -102,6 +104,9 @@ class _TasksViewState extends State<TasksView> {
         children: [
           _TasksHeader(
             vm: vm,
+            programLine: stud?.programLine,
+            enrolledSummary: stud?.enrolledSubjectsSummary,
+            headerColor: stud?.primaryColor,
             onAdd: () => _showAddTaskDialog(context),
           ),
           if (vm.loading && vm.visibleTasks.isEmpty)
@@ -188,18 +193,28 @@ class _TasksViewState extends State<TasksView> {
 class _TasksHeader extends StatelessWidget {
   const _TasksHeader({
     required this.vm,
+    this.programLine,
+    this.enrolledSummary,
+    this.headerColor,
     required this.onAdd,
   });
 
   final TasksViewModel vm;
+  final String? programLine;
+  final String? enrolledSummary;
+  final Color? headerColor;
   final VoidCallback onAdd;
 
   @override
   Widget build(BuildContext context) {
+    final bg = headerColor ?? AppColors.primary;
+    final sub = programLine ?? vm.semesterLabel;
+    final extra = enrolledSummary;
+
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
       ),
       padding: const EdgeInsets.fromLTRB(20, 12, 12, 24),
       child: Row(
@@ -219,9 +234,21 @@ class _TasksHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  vm.semesterLabel,
+                  sub,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
+                if (extra != null && extra.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    extra,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

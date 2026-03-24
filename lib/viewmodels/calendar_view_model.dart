@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/academic_task.dart';
 import '../models/calendar_event.dart';
+import '../models/student_app_context.dart';
 
 /// Week range, selection, and events for the weekly calendar View.
 class CalendarViewModel extends ChangeNotifier {
@@ -21,19 +22,37 @@ class CalendarViewModel extends ChangeNotifier {
   List<AcademicTask> _syncedTasks = [];
   String _taskSyncSig = '';
 
+  /// Recurring class meetings from enrollments (replaces demo blocks when non-empty).
+  List<WeeklyClassSlot> _enrollmentWeeklySlots = [];
+
   DateTime get weekStart => _weekStart;
   DateTime get selectedDay => _selectedDay;
 
   /// Demo schedule for the **visible** week + user-added events + task due dates.
   List<CalendarEvent> get eventsForVisibleWeek {
     final end = _weekEnd;
-    final demo = _seedEventsForWeek(_weekStart);
     final userInWeek = _userEvents.where((e) {
       final d = _dateOnly(e.occurrenceDate);
       return !d.isBefore(_weekStart) && !d.isAfter(end);
     }).toList();
     final fromTasks = _calendarEventsFromTasks(_weekStart, end, _syncedTasks);
+    if (_enrollmentWeeklySlots.isNotEmpty) {
+      final fromEnroll =
+          _eventsFromEnrollmentWeek(_weekStart, _enrollmentWeeklySlots);
+      return [...fromEnroll, ...userInWeek, ...fromTasks];
+    }
+    final demo = _seedEventsForWeek(_weekStart);
     return [...demo, ...userInWeek, ...fromTasks];
+  }
+
+  void setEnrollmentWeeklySlots(List<WeeklyClassSlot> slots) {
+    _enrollmentWeeklySlots = List<WeeklyClassSlot>.from(slots);
+    notifyListeners();
+  }
+
+  void clearEnrollmentSlots() {
+    _enrollmentWeeklySlots = [];
+    notifyListeners();
   }
 
   /// Call when [TasksViewModel] finishes loading or mutating tasks.
@@ -134,6 +153,23 @@ class CalendarViewModel extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  static List<CalendarEvent> _eventsFromEnrollmentWeek(
+    DateTime monday,
+    List<WeeklyClassSlot> slots,
+  ) {
+    return [
+      for (final s in slots)
+        CalendarEvent(
+          title: s.title,
+          subtitle: s.subtitle,
+          occurrenceDate: monday.add(Duration(days: s.dayOfWeek - 1)),
+          startHour: s.startHour,
+          endHour: s.endHour,
+          mint: false,
+        ),
+    ];
   }
 
   static List<CalendarEvent> _calendarEventsFromTasks(

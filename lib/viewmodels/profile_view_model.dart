@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/student_app_context.dart';
 import '../utils/auth_user_display.dart';
 
 /// Profile / settings screen state.
@@ -32,6 +33,16 @@ class ProfileViewModel extends ChangeNotifier {
     initials = d.initials;
     if (d.programLine != null && d.programLine!.isNotEmpty) {
       program = d.programLine!;
+    }
+    notifyListeners();
+  }
+
+  /// College + year level and optional legal name from registration.
+  void applyStudentContext(StudentAppContext ctx) {
+    program = ctx.programLine;
+    if (ctx.fullName != null && ctx.fullName!.isNotEmpty) {
+      displayName = ctx.fullName!;
+      initials = AuthUserDisplay.initialsFrom(ctx.fullName!, '');
     }
     notifyListeners();
   }
