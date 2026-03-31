@@ -177,7 +177,9 @@ class _TasksViewState extends State<TasksView> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _TaskCard(
                             task: t,
-                            onToggle: () => vm.toggleTaskDone(t),
+                            onToggleDone: () => vm.toggleTaskDone(t),
+                            onTogglePin: () => vm.togglePin(t),
+                            onProgress: (p) => vm.setProgressPercent(t, p),
                           ),
                         );
                       },
@@ -311,11 +313,15 @@ class _FilterChip extends StatelessWidget {
 class _TaskCard extends StatelessWidget {
   const _TaskCard({
     required this.task,
-    required this.onToggle,
+    required this.onToggleDone,
+    required this.onTogglePin,
+    required this.onProgress,
   });
 
   final AcademicTask task;
-  final VoidCallback onToggle;
+  final VoidCallback onToggleDone;
+  final VoidCallback onTogglePin;
+  final ValueChanged<int> onProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -323,49 +329,62 @@ class _TaskCard extends StatelessWidget {
     final done = task.status == AcademicTaskStatus.done;
 
     return Card(
-      child: InkWell(
-        onTap: onToggle,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    done ? Icons.check_circle : Icons.circle_outlined,
-                    size: 22,
-                    color: done ? AppColors.primary : Colors.grey,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      task.subject,
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        letterSpacing: 0.5,
-                        decoration: done ? TextDecoration.lineThrough : null,
-                      ),
-                    ),
-                  ),
-                  _PriorityBadge(priority: task.priority),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                task.title,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.navyText,
-                  decoration: done ? TextDecoration.lineThrough : null,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 12, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Checkbox(
+                  value: done,
+                  onChanged: (_) => onToggleDone(),
+                  activeColor: AppColors.primary,
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
+                IconButton(
+                  tooltip: task.isPinned ? 'Unpin' : 'Pin',
+                  onPressed: onTogglePin,
+                  icon: Icon(
+                    task.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+                    color: task.isPinned ? AppColors.primary : Colors.grey,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        task.subject,
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                          decoration:
+                              done ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        task.title,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.navyText,
+                          decoration:
+                              done ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _PriorityBadge(priority: task.priority),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 48, right: 0, top: 4),
+              child: Row(
                 children: [
                   const Icon(Icons.calendar_today_outlined,
                       size: 16, color: Color(0xFF9E9E9E)),
@@ -377,18 +396,46 @@ class _TaskCard extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
-                  const Spacer(),
-                  Text(
-                    done ? 'Tap to mark pending' : 'Tap to mark done',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).hintColor,
-                    ),
-                  ),
                 ],
               ),
+            ),
+            if (!done) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 48),
+                child: Row(
+                  children: [
+                    Text(
+                      'Progress',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${task.progressPercent}%',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 36, right: 0),
+                child: Slider(
+                  value: task.progressPercent.toDouble(),
+                  max: 100,
+                  divisions: 20,
+                  label: '${task.progressPercent}%',
+                  onChanged: (v) => onProgress(v.round()),
+                ),
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );

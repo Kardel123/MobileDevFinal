@@ -10,6 +10,8 @@ class AcademicTask {
     required this.dueDate,
     required this.priority,
     required this.status,
+    this.isPinned = false,
+    this.progressPercent = 0,
   });
 
   final String id;
@@ -18,4 +20,7 @@ class AcademicTask {
   final DateTime dueDate;
   final TaskPriority priority;
   final AcademicTaskStatus status;
+  final bool isPinned;
+  /// 0–100; independent of done status (for in-progress work).
+  final int progressPercent;
 }

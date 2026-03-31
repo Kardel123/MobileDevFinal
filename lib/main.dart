@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'services/deadline_notification_service.dart';
 import 'services/group_service.dart';
 import 'services/student_profile_service.dart';
 import 'services/task_service.dart';
@@ -21,6 +22,8 @@ import 'views/auth/auth_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await DeadlineNotificationService.instance.init();
 
   await Supabase.initialize(
     url: 'https://tfbsttdoqxyszpmsnvve.supabase.co',

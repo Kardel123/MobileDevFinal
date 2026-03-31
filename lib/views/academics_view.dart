@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
 import '../viewmodels/academics_view_model.dart';
 import '../viewmodels/student_context_view_model.dart';
+import 'insights_view.dart';
 import 'project_hub_view.dart';
 import 'tasks_view.dart';
+import 'team_view.dart';
 
-/// Academics: Tasks + Projects; tab index lives in [AcademicsViewModel] (MVVM).
+/// Academics: Tasks, Projects, Insights, Team — [AcademicsViewModel] (MVVM).
 class AcademicsView extends StatelessWidget {
   const AcademicsView({super.key});
 
@@ -58,23 +60,32 @@ class AcademicsView extends StatelessWidget {
           ),
         Material(
           color: Theme.of(context).colorScheme.surface,
-          child: Row(
-            children: [
-              Expanded(
-                child: _AcademicsTabButton(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _AcademicsTabButton(
                   label: 'Tasks',
                   selected: vm.tabIndex == 0,
                   onTap: vm.selectTasks,
                 ),
-              ),
-              Expanded(
-                child: _AcademicsTabButton(
+                _AcademicsTabButton(
                   label: 'Projects',
                   selected: vm.tabIndex == 1,
                   onTap: vm.selectProjects,
                 ),
-              ),
-            ],
+                _AcademicsTabButton(
+                  label: 'Insights',
+                  selected: vm.tabIndex == 2,
+                  onTap: vm.selectInsights,
+                ),
+                _AcademicsTabButton(
+                  label: 'Team',
+                  selected: vm.tabIndex == 3,
+                  onTap: vm.selectTeam,
+                ),
+              ],
+            ),
           ),
         ),
         const Divider(height: 1),
@@ -84,6 +95,8 @@ class AcademicsView extends StatelessWidget {
             children: const [
               TasksView(),
               ProjectHubView(),
+              InsightsView(),
+              TeamView(),
             ],
           ),
         ),
@@ -108,7 +121,8 @@ class _AcademicsTabButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        constraints: const BoxConstraints(minWidth: 96),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(

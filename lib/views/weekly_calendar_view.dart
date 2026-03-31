@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -46,139 +47,346 @@ class WeeklyCalendarView extends StatelessWidget {
             accent: accent,
           ),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Theme.of(context).colorScheme.surfaceContainerLowest
-                    : Color.lerp(primary, Colors.white, 0.94),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final gridWidth = constraints.maxWidth - _timeColWidth;
-                    final dayWidth = gridWidth / 7;
-                    final totalHours = _endHour - _startHour + 1;
-                    final gridHeight = totalHours * _slotHeight;
-                    final selCol = vm.selectedColumnIndex;
-                    final days = vm.weekDays;
-
-                    return SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: SizedBox(
-                        height: gridHeight + 12,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: _timeColWidth,
-                              child: Column(
-                                children: List.generate(totalHours, (i) {
-                                  final h = _startHour + i;
-                                  return SizedBox(
-                                    height: _slotHeight,
-                                    child: Align(
-                                      alignment: Alignment.topRight,
-                                      child: Padding(
-                                        padding: const EdgeInsets.only(right: 8, top: 2),
-                                        child: Text(
-                                          _formatHour12(h),
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: primary.withValues(alpha: 0.55),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              ),
-                            ),
-                            Expanded(
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Positioned.fill(
-                                    child: Row(
-                                      children: List.generate(7, (col) {
-                                        return Expanded(
-                                          child: Material(
-                                            color: Colors.transparent,
-                                            child: InkWell(
-                                              onTap: () {
-                                                HapticFeedback.selectionClick();
-                                                vm.selectDay(days[col]);
-                                              },
-                                              splashColor: primary.withValues(alpha: 0.12),
-                                              highlightColor: primary.withValues(alpha: 0.06),
-                                              child: const SizedBox.expand(),
-                                            ),
-                                          ),
-                                        );
-                                      }),
-                                    ),
-                                  ),
-                                  _GridLines(
-                                    totalHours: totalHours,
-                                    slotHeight: _slotHeight,
-                                    dayWidth: dayWidth,
-                                    primary: primary,
-                                    isDark: isDark,
-                                  ),
-                                  if (selCol != null)
-                                    Positioned(
-                                      top: 0,
-                                      left: selCol * dayWidth,
-                                      width: dayWidth,
-                                      height: gridHeight,
-                                      child: IgnorePointer(
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topCenter,
-                                              end: Alignment.bottomCenter,
-                                              colors: [
-                                                primary.withValues(alpha: 0.12),
-                                                primary.withValues(alpha: 0.04),
-                                              ],
-                                            ),
-                                            border: Border.symmetric(
-                                              vertical: BorderSide(
-                                                color: primary.withValues(alpha: 0.2),
-                                                width: 1,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ...visible.map(
-                                    (e) => _EventBlock(
-                                      event: e,
-                                      columnIndex: vm.columnForEvent(e),
-                                      dayWidth: dayWidth,
-                                      slotHeight: _slotHeight,
-                                      startHour: _startHour,
-                                      collegePrimary: primary,
-                                      collegeAccent: accent,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
+            child: vm.layoutMode == CalendarLayoutMode.dayAgenda
+                ? _DayAgendaPanel(
+                    vm: vm,
+                    primary: primary,
+                    accent: accent,
+                    isDark: isDark,
+                  )
+                : _WeekGridPanel(
+                    vm: vm,
+                    visible: visible,
+                    primary: primary,
+                    accent: accent,
+                    isDark: isDark,
+                    timeColWidth: _timeColWidth,
+                    slotHeight: _slotHeight,
+                    startHour: _startHour,
+                    endHour: _endHour,
+                  ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Rebuilds once per minute so the “now” line stays accurate.
+class _WeekGridPanel extends StatefulWidget {
+  const _WeekGridPanel({
+    required this.vm,
+    required this.visible,
+    required this.primary,
+    required this.accent,
+    required this.isDark,
+    required this.timeColWidth,
+    required this.slotHeight,
+    required this.startHour,
+    required this.endHour,
+  });
+
+  final CalendarViewModel vm;
+  final List<CalendarEvent> visible;
+  final Color primary;
+  final Color accent;
+  final bool isDark;
+  final double timeColWidth;
+  final double slotHeight;
+  final int startHour;
+  final int endHour;
+
+  @override
+  State<_WeekGridPanel> createState() => _WeekGridPanelState();
+}
+
+class _WeekGridPanelState extends State<_WeekGridPanel> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = widget.vm;
+    final visible = widget.visible;
+    final primary = widget.primary;
+    final accent = widget.accent;
+    final isDark = widget.isDark;
+    final timeColWidth = widget.timeColWidth;
+    final slotHeight = widget.slotHeight;
+    final startHour = widget.startHour;
+    final endHour = widget.endHour;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? Theme.of(context).colorScheme.surfaceContainerLowest
+            : Color.lerp(primary, Colors.white, 0.94),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final gridWidth = constraints.maxWidth - timeColWidth;
+            final dayWidth = gridWidth / 7;
+            final totalHours = endHour - startHour + 1;
+            final gridHeight = totalHours * slotHeight;
+            final selCol = vm.selectedColumnIndex;
+            final days = vm.weekDays;
+            final nowOffset = _nowLineOffset(vm, startHour, endHour, slotHeight);
+
+            return SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: SizedBox(
+                height: gridHeight + 12,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: timeColWidth,
+                      child: Column(
+                        children: List.generate(totalHours, (i) {
+                          final h = startHour + i;
+                          return SizedBox(
+                            height: slotHeight,
+                            child: Align(
+                              alignment: Alignment.topRight,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.only(right: 8, top: 2),
+                                child: Text(
+                                  _formatHour12(h),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: primary.withValues(alpha: 0.55),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
+                    Expanded(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          Positioned.fill(
+                            child: Row(
+                              children: List.generate(7, (col) {
+                                return Expanded(
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        HapticFeedback.selectionClick();
+                                        vm.selectDay(days[col]);
+                                      },
+                                      splashColor:
+                                          primary.withValues(alpha: 0.12),
+                                      highlightColor:
+                                          primary.withValues(alpha: 0.06),
+                                      child: const SizedBox.expand(),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                          _GridLines(
+                            totalHours: totalHours,
+                            slotHeight: slotHeight,
+                            dayWidth: dayWidth,
+                            primary: primary,
+                            isDark: isDark,
+                          ),
+                          if (selCol != null)
+                            Positioned(
+                              top: 0,
+                              left: selCol * dayWidth,
+                              width: dayWidth,
+                              height: gridHeight,
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        primary.withValues(alpha: 0.12),
+                                        primary.withValues(alpha: 0.04),
+                                      ],
+                                    ),
+                                    border: Border.symmetric(
+                                      vertical: BorderSide(
+                                        color: primary.withValues(alpha: 0.2),
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ...visible.map(
+                            (e) => _EventBlock(
+                              event: e,
+                              columnIndex: vm.columnForEvent(e),
+                              dayWidth: dayWidth,
+                              slotHeight: slotHeight,
+                              startHour: startHour,
+                              collegePrimary: primary,
+                              collegeAccent: accent,
+                            ),
+                          ),
+                          if (nowOffset != null)
+                            Positioned(
+                              left: 0,
+                              top: nowOffset,
+                              right: 0,
+                              height: 2,
+                              child: IgnorePointer(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.redAccent
+                                            .withValues(alpha: 0.45),
+                                        blurRadius: 6,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+double? _nowLineOffset(
+  CalendarViewModel vm,
+  int startHour,
+  int endHour,
+  double slotHeight,
+) {
+  final now = DateTime.now();
+  if (!vm.weekDays.any(
+        (d) =>
+            d.year == now.year && d.month == now.month && d.day == now.day,
+      )) {
+    return null;
+  }
+  final frac = now.hour + now.minute / 60.0;
+  if (frac < startHour || frac > endHour + 1) return null;
+  return (frac - startHour) * slotHeight;
+}
+
+class _DayAgendaPanel extends StatelessWidget {
+  const _DayAgendaPanel({
+    required this.vm,
+    required this.primary,
+    required this.accent,
+    required this.isDark,
+  });
+
+  final CalendarViewModel vm;
+  final Color primary;
+  final Color accent;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final events = vm.eventsForSelectedDay;
+    final dayLabel = DateFormat.MMMEd().format(vm.selectedDay);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? Theme.of(context).colorScheme.surfaceContainerLowest
+            : Color.lerp(primary, Colors.white, 0.94),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: events.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Nothing scheduled on $dayLabel.\nSwitch to week view or pick another day.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade600, height: 1.35),
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+              itemCount: events.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
+              itemBuilder: (context, i) {
+                final e = events[i];
+                return Material(
+                  borderRadius: BorderRadius.circular(16),
+                  elevation: 1,
+                  color: isDark
+                      ? Theme.of(context).colorScheme.surfaceContainerHigh
+                      : Colors.white,
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: (e.mint ? accent : primary)
+                            .withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        e.mint ? Icons.task_alt_rounded : Icons.class_rounded,
+                        color: primary,
+                      ),
+                    ),
+                    title: Text(
+                      e.title,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    subtitle: Text(
+                      '${_formatHourDecimal(e.startHour)} – ${_formatHourDecimal(e.endHour)}\n${e.subtitle.trim().isEmpty ? ' ' : e.subtitle}',
+                      style: TextStyle(
+                        height: 1.35,
+                        color: Colors.grey.shade700,
+                        fontSize: 13,
+                      ),
+                    ),
+                    isThreeLine: true,
+                  ),
+                );
+              },
+            ),
     );
   }
 }
@@ -293,7 +501,45 @@ class _ScheduleHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: 'Week grid',
+                          onPressed: () {
+                            HapticFeedback.selectionClick();
+                            vm.setLayoutMode(CalendarLayoutMode.weekGrid);
+                          },
+                          icon: Icon(
+                            Icons.view_week_rounded,
+                            color: vm.layoutMode == CalendarLayoutMode.weekGrid
+                                ? Colors.white
+                                : Colors.white70,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Day list',
+                          onPressed: () {
+                            HapticFeedback.selectionClick();
+                            vm.setLayoutMode(CalendarLayoutMode.dayAgenda);
+                          },
+                          icon: Icon(
+                            Icons.view_agenda_rounded,
+                            color: vm.layoutMode == CalendarLayoutMode.dayAgenda
+                                ? Colors.white
+                                : Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Material(
                     color: Colors.white,
                     elevation: 4,

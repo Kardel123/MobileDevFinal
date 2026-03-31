@@ -1,25 +1,23 @@
 import 'package:flutter/foundation.dart';
 
-/// Which sub-tab is shown under Academics (Tasks vs Projects).
+/// Sub-tabs under Academics: Tasks, Projects, Insights, Team.
 class AcademicsViewModel extends ChangeNotifier {
+  static const int tabCount = 4;
+
   int _tabIndex = 0;
 
   int get tabIndex => _tabIndex;
 
-  void selectTasks() {
-    if (_tabIndex == 0) return;
-    _tabIndex = 0;
-    notifyListeners();
-  }
+  void selectTasks() => setTabIndex(0);
 
-  void selectProjects() {
-    if (_tabIndex == 1) return;
-    _tabIndex = 1;
-    notifyListeners();
-  }
+  void selectProjects() => setTabIndex(1);
+
+  void selectInsights() => setTabIndex(2);
+
+  void selectTeam() => setTabIndex(3);
 
   void setTabIndex(int index) {
-    if (index < 0 || index > 1 || index == _tabIndex) return;
+    if (index < 0 || index >= tabCount || index == _tabIndex) return;
     _tabIndex = index;
     notifyListeners();
   }

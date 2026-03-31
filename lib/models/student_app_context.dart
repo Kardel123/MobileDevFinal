@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'app_role.dart';
 import 'college.dart';
 
 /// One recurring class meeting (same every week) for calendar expansion.
@@ -43,6 +44,7 @@ class StudentAppContext {
     this.fullName,
     required this.subjects,
     required this.weeklySlots,
+    this.appRole = AppRole.student,
   });
 
   final String collegeId;
@@ -53,6 +55,7 @@ class StudentAppContext {
   final String? fullName;
   final List<EnrolledSubjectRef> subjects;
   final List<WeeklyClassSlot> weeklySlots;
+  final AppRole appRole;
 
   Color get primaryColor => College.hexToColor(primaryHex);
 
