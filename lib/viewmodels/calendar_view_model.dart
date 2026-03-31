@@ -4,6 +4,9 @@ import '../models/academic_task.dart';
 import '../models/calendar_event.dart';
 import '../models/student_app_context.dart';
 
+/// Week grid vs focused day list (agenda).
+enum CalendarLayoutMode { weekGrid, dayAgenda }
+
 /// Week range, selection, and events for the weekly calendar View.
 class CalendarViewModel extends ChangeNotifier {
   CalendarViewModel() {
@@ -25,8 +28,18 @@ class CalendarViewModel extends ChangeNotifier {
   /// Recurring class meetings from enrollments (replaces demo blocks when non-empty).
   List<WeeklyClassSlot> _enrollmentWeeklySlots = [];
 
+  CalendarLayoutMode _layoutMode = CalendarLayoutMode.weekGrid;
+
   DateTime get weekStart => _weekStart;
   DateTime get selectedDay => _selectedDay;
+
+  CalendarLayoutMode get layoutMode => _layoutMode;
+
+  void setLayoutMode(CalendarLayoutMode mode) {
+    if (mode == _layoutMode) return;
+    _layoutMode = mode;
+    notifyListeners();
+  }
 
   /// Demo schedule for the **visible** week + user-added events + task due dates.
   List<CalendarEvent> get eventsForVisibleWeek {
@@ -45,6 +58,20 @@ class CalendarViewModel extends ChangeNotifier {
     return [...demo, ...userInWeek, ...fromTasks];
   }
 
+  /// Events on [selectedDay] (classes, user events, task due times) within the visible week.
+  List<CalendarEvent> get eventsForSelectedDay {
+    final d = _dateOnly(_selectedDay);
+    final list = eventsForVisibleWeek
+        .where((e) => _dateOnly(e.occurrenceDate) == d)
+        .toList();
+    list.sort((a, b) {
+      final c = a.startHour.compareTo(b.startHour);
+      if (c != 0) return c;
+      return a.title.compareTo(b.title);
+    });
+    return list;
+  }
+
   void setEnrollmentWeeklySlots(List<WeeklyClassSlot> slots) {
     _enrollmentWeeklySlots = List<WeeklyClassSlot>.from(slots);
     notifyListeners();
@@ -58,7 +85,10 @@ class CalendarViewModel extends ChangeNotifier {
   /// Call when [TasksViewModel] finishes loading or mutating tasks.
   void syncTaskDeadlines(List<AcademicTask> tasks) {
     final sig = tasks
-        .map((t) => '${t.id}|${t.dueDate.toIso8601String()}|${t.status}|${t.title}')
+        .map(
+          (t) =>
+              '${t.id}|${t.dueDate.toIso8601String()}|${t.status}|${t.title}|${t.isPinned}|${t.progressPercent}',
+        )
         .join('\u001e');
     if (sig == _taskSyncSig) return;
     _taskSyncSig = sig;

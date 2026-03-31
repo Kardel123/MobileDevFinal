@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/app_role.dart';
 import '../models/course_schedule.dart';
 import '../models/student_app_context.dart';
 
@@ -57,7 +58,7 @@ class StudentProfileService {
     final row = await _c
         .from('student_profiles')
         .select(
-          'full_name, year_level, college_id, colleges(id, name, primary_hex, accent_hex)',
+          'full_name, year_level, college_id, app_role, colleges(id, name, primary_hex, accent_hex)',
         )
         .eq('user_id', user.id)
         .maybeSingle();
@@ -75,6 +76,8 @@ class StudentProfileService {
     final fullName = nameRaw is String && nameRaw.trim().isNotEmpty
         ? nameRaw.trim()
         : null;
+
+    final appRole = appRoleFromDb(row['app_role'] as String?);
 
     final enrRows = await _c
         .from('student_enrollments')
@@ -98,6 +101,7 @@ class StudentProfileService {
         fullName: fullName,
         subjects: const [],
         weeklySlots: const [],
+        appRole: appRole,
       );
     }
 
@@ -151,6 +155,7 @@ class StudentProfileService {
       fullName: fullName,
       subjects: subjects,
       weeklySlots: weeklySlots,
+      appRole: appRole,
     );
   }
 }

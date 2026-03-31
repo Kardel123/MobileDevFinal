@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/academic_task.dart';
 import '../models/task_filter.dart';
 import '../models/task_priority.dart';
+import '../services/deadline_notification_service.dart';
 import '../services/group_service.dart';
 import '../services/task_service.dart';
 
@@ -31,16 +32,14 @@ class TasksViewModel extends ChangeNotifier {
   List<AcademicTask> get allTasks => List.unmodifiable(_tasks);
 
   List<AcademicTask> get visibleTasks {
-    switch (_filter) {
-      case TaskFilter.all:
-        return List.unmodifiable(_tasks);
-      case TaskFilter.pending:
-        return _tasks
-            .where((t) => t.status == AcademicTaskStatus.pending)
-            .toList();
-      case TaskFilter.done:
-        return _tasks.where((t) => t.status == AcademicTaskStatus.done).toList();
-    }
+    final base = switch (_filter) {
+      TaskFilter.all => _tasks,
+      TaskFilter.pending =>
+        _tasks.where((t) => t.status == AcademicTaskStatus.pending).toList(),
+      TaskFilter.done =>
+        _tasks.where((t) => t.status == AcademicTaskStatus.done).toList(),
+    };
+    return List.unmodifiable(_sortTasks(base));
   }
 
   void setFilter(TaskFilter value) {
@@ -53,6 +52,22 @@ class TasksViewModel extends ChangeNotifier {
     if (_errorMessage == null) return;
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<void> _syncDeadlineNotifications() async {
+    await DeadlineNotificationService.instance.init();
+    await DeadlineNotificationService.instance.syncFromTasks(allTasks);
+  }
+
+  static List<AcademicTask> _sortTasks(List<AcademicTask> list) {
+    final out = List<AcademicTask>.from(list);
+    out.sort((a, b) {
+      if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+      final c = a.dueDate.compareTo(b.dueDate);
+      if (c != 0) return c;
+      return a.title.compareTo(b.title);
+    });
+    return out;
   }
 
   /// Loads the default group and tasks from Supabase. Call after sign-in or pull-to-refresh.
@@ -68,12 +83,26 @@ class TasksViewModel extends ChangeNotifier {
         return;
       }
 
-      _activeGroupId = await _groupService.ensureDefaultGroup();
+      final defaultId = await _groupService.ensureDefaultGroup();
+      _activeGroupId ??= defaultId;
+
+      try {
+        final accessible = await _groupService.listAccessibleGroups();
+        final ids = accessible.map((g) => g['id'] as String).toSet();
+        if (_activeGroupId != null && !ids.contains(_activeGroupId)) {
+          _activeGroupId = defaultId;
+        }
+      } catch (_) {
+        /* keep _activeGroupId if membership query fails */
+      }
+
       final raw = await _taskService.getTasks(_activeGroupId!);
       _tasks = [
         for (var i = 0; i < raw.length; i++)
           _mapRow(Map<String, dynamic>.from(raw[i] as Map), i),
       ];
+      _tasks = _sortTasks(_tasks);
+      await _syncDeadlineNotifications();
     } catch (e) {
       _errorMessage = e.toString();
       _tasks = [];
@@ -81,6 +110,13 @@ class TasksViewModel extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  /// Switch task list to another group you own or joined.
+  Future<void> setActiveGroup(String groupId) async {
+    if (groupId == _activeGroupId) return;
+    _activeGroupId = groupId;
+    await refresh();
   }
 
   /// Inserts a row in Supabase and reloads the list.
@@ -139,6 +175,66 @@ class TasksViewModel extends ChangeNotifier {
                     status: next == 'done'
                         ? AcademicTaskStatus.done
                         : AcademicTaskStatus.pending,
+                    isPinned: t.isPinned,
+                    progressPercent: t.progressPercent,
+                  )
+                : t,
+          )
+          .toList();
+      _tasks = _sortTasks(_tasks);
+      notifyListeners();
+      await _syncDeadlineNotifications();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> togglePin(AcademicTask task) async {
+    final next = !task.isPinned;
+    try {
+      await _taskService.updateTask(taskId: task.id, isPinned: next);
+      _tasks = _tasks
+          .map(
+            (t) => t.id == task.id
+                ? AcademicTask(
+                    id: t.id,
+                    subject: t.subject,
+                    title: t.title,
+                    dueDate: t.dueDate,
+                    priority: t.priority,
+                    status: t.status,
+                    isPinned: next,
+                    progressPercent: t.progressPercent,
+                  )
+                : t,
+          )
+          .toList();
+      _tasks = _sortTasks(_tasks);
+      notifyListeners();
+      await _syncDeadlineNotifications();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> setProgressPercent(AcademicTask task, int percent) async {
+    final p = percent.clamp(0, 100);
+    try {
+      await _taskService.updateTask(taskId: task.id, progressPercent: p);
+      _tasks = _tasks
+          .map(
+            (t) => t.id == task.id
+                ? AcademicTask(
+                    id: t.id,
+                    subject: t.subject,
+                    title: t.title,
+                    dueDate: t.dueDate,
+                    priority: t.priority,
+                    status: t.status,
+                    isPinned: t.isPinned,
+                    progressPercent: p,
                   )
                 : t,
           )
@@ -158,7 +254,9 @@ class TasksViewModel extends ChangeNotifier {
       for (var i = 0; i < raw.length; i++)
         _mapRow(Map<String, dynamic>.from(raw[i] as Map), i),
     ];
+    _tasks = _sortTasks(_tasks);
     notifyListeners();
+    await _syncDeadlineNotifications();
   }
 
   static AcademicTask _mapRow(Map<String, dynamic> row, int index) {
@@ -189,6 +287,17 @@ class TasksViewModel extends ChangeNotifier {
         priority = TaskPriority.med;
     }
 
+    final pinRaw = row['is_pinned'];
+    final isPinned = pinRaw == true || pinRaw == 'true';
+
+    var progress = 0;
+    final pr = row['progress_percent'];
+    if (pr is int) {
+      progress = pr.clamp(0, 100);
+    } else if (pr is num) {
+      progress = pr.round().clamp(0, 100);
+    }
+
     return AcademicTask(
       id: row['id']?.toString() ?? 'row_$index',
       subject: (row['subject'] as String?)?.isNotEmpty == true
@@ -198,6 +307,8 @@ class TasksViewModel extends ChangeNotifier {
       dueDate: due,
       priority: priority,
       status: status,
+      isPinned: isPinned,
+      progressPercent: progress,
     );
   }
 }

@@ -95,6 +95,8 @@ class TaskService {
     String? priority,
     DateTime? dueDate,
     String? status,
+    bool? isPinned,
+    int? progressPercent,
   }) async {
     final Map<String, dynamic> payload = {};
 
@@ -104,6 +106,10 @@ class TaskService {
     if (priority != null) payload['priority'] = priority;
     if (dueDate != null) payload['due_date'] = dueDate.toIso8601String();
     if (status != null) payload['status'] = status;
+    if (isPinned != null) payload['is_pinned'] = isPinned;
+    if (progressPercent != null) {
+      payload['progress_percent'] = progressPercent.clamp(0, 100);
+    }
 
     if (payload.isEmpty) return;
 
@@ -203,6 +209,8 @@ class TaskService {
       'priority': _priorityToDb(priority),
       'due_date': '$y-$m-$day',
       'status': status,
+      'is_pinned': false,
+      'progress_percent': 0,
     });
   }
 

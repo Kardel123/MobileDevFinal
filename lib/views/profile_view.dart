@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/academic_task.dart';
+import '../models/app_role.dart';
 import '../theme/app_colors.dart';
 import '../viewmodels/profile_view_model.dart';
 import '../viewmodels/student_context_view_model.dart';
@@ -129,6 +130,47 @@ class ProfileView extends StatelessWidget {
                                       ),
                                     ),
                                   ],
+                                ),
+                              ],
+                              if (stud != null) ...[
+                                const SizedBox(height: 12),
+                                Align(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: primary.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: primary.withValues(alpha: 0.25),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          stud.appRole == AppRole.student
+                                              ? Icons.school_outlined
+                                              : stud.appRole == AppRole.faculty
+                                                  ? Icons.co_present_outlined
+                                                  : Icons.admin_panel_settings_outlined,
+                                          size: 16,
+                                          color: primary,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          stud.appRole.displayLabel,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                            color: primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ],
                               const SizedBox(height: 16),
