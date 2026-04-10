@@ -7,6 +7,7 @@ import '../viewmodels/student_context_view_model.dart';
 import 'insights_view.dart';
 import 'project_hub_view.dart';
 import 'tasks_view.dart';
+import 'subject_chats_hub_view.dart';
 import 'team_view.dart';
 
 /// Academics: Tasks, Projects, Insights, Team — [AcademicsViewModel] (MVVM).
@@ -84,6 +85,11 @@ class AcademicsView extends StatelessWidget {
                   selected: vm.tabIndex == 3,
                   onTap: vm.selectTeam,
                 ),
+                _AcademicsTabButton(
+                  label: 'Chats',
+                  selected: vm.tabIndex == 4,
+                  onTap: vm.selectChats,
+                ),
               ],
             ),
           ),
@@ -97,6 +103,7 @@ class AcademicsView extends StatelessWidget {
               ProjectHubView(),
               InsightsView(),
               TeamView(),
+              SubjectChatsHubView(),
             ],
           ),
         ),

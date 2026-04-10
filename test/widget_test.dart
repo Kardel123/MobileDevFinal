@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'package:campus_taskhub/services/group_service.dart';
 import 'package:campus_taskhub/services/student_profile_service.dart';
+import 'package:campus_taskhub/services/subject_chat_service.dart';
 import 'package:campus_taskhub/services/task_service.dart';
 import 'package:campus_taskhub/viewmodels/academics_view_model.dart';
 import 'package:campus_taskhub/viewmodels/calendar_view_model.dart';
@@ -52,6 +53,7 @@ void main() {
           ChangeNotifierProvider(create: (_) => ProfileViewModel()),
           Provider<GroupService>.value(value: groupService),
           Provider<TaskService>.value(value: taskService),
+          Provider<SubjectChatService>(create: (_) => SubjectChatService()),
         ],
         child: const MaterialApp(
           home: MainShellView(),
