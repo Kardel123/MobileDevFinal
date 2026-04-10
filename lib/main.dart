@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'services/deadline_notification_service.dart';
 import 'services/group_service.dart';
 import 'services/student_profile_service.dart';
+import 'services/subject_chat_service.dart';
 import 'services/task_service.dart';
 import 'theme/app_theme.dart';
 import 'viewmodels/academics_view_model.dart';
@@ -74,6 +75,7 @@ class CampusTaskHubApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ProfileViewModel()),
         Provider<GroupService>.value(value: groupService),
         Provider<TaskService>.value(value: taskService),
+        Provider<SubjectChatService>(create: (_) => SubjectChatService()),
       ],
       child: const _ThemedApp(),
     );

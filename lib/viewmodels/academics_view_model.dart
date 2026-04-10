@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 
-/// Sub-tabs under Academics: Tasks, Projects, Insights, Team.
+/// Sub-tabs under Academics: Tasks, Projects, Insights, Team, Chats.
 class AcademicsViewModel extends ChangeNotifier {
-  static const int tabCount = 4;
+  static const int tabCount = 5;
 
   int _tabIndex = 0;
 
@@ -15,6 +15,8 @@ class AcademicsViewModel extends ChangeNotifier {
   void selectInsights() => setTabIndex(2);
 
   void selectTeam() => setTabIndex(3);
+
+  void selectChats() => setTabIndex(4);
 
   void setTabIndex(int index) {
     if (index < 0 || index >= tabCount || index == _tabIndex) return;
