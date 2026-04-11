@@ -58,7 +58,13 @@ class DeadlineNotificationService {
   Future<void> syncFromTasks(List<AcademicTask> tasks) async {
     if (!_supported || !_initialized) return;
 
-    await _plugin.cancelAll();
+    try {
+      await _plugin.cancelAll();
+    } catch (e, st) {
+      // Release R8/Gson issues or OEM quirks should not break task loading UI.
+      debugPrint('DeadlineNotificationService.cancelAll: $e\n$st');
+      return;
+    }
 
     final now = DateTime.now();
     var notificationId = 9000;
@@ -98,8 +104,8 @@ class DeadlineNotificationService {
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
         );
-      } catch (_) {
-        // Ignore scheduling failures (e.g. permission denied).
+      } catch (e, st) {
+        debugPrint('DeadlineNotificationService.zonedSchedule: $e\n$st');
       }
     }
   }
