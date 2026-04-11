@@ -248,6 +248,18 @@ class TasksViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteTask(AcademicTask task) async {
+    try {
+      await _taskService.deleteTask(task.id);
+      _tasks = _tasks.where((t) => t.id != task.id).toList();
+      notifyListeners();
+      await _syncDeadlineNotifications();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
   Future<void> setProgressPercent(AcademicTask task, int percent) async {
     final p = percent.clamp(0, 100);
     try {

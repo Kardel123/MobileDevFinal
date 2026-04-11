@@ -134,6 +134,41 @@ class _TasksViewState extends State<TasksView> {
     }
   }
 
+  Future<void> _confirmDeleteTask(BuildContext context, AcademicTask task) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete task?'),
+        content: Text(
+          task.title.isEmpty
+              ? 'This task will be removed permanently.'
+              : 'Remove "${task.title}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (!context.mounted || ok != true) return;
+    final vm = context.read<TasksViewModel>();
+    await vm.deleteTask(task);
+    if (!context.mounted) return;
+    final err = vm.errorMessage;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<TasksViewModel>();
@@ -223,6 +258,7 @@ class _TasksViewState extends State<TasksView> {
                             onTogglePin: () => vm.togglePin(t),
                             onProgress: (p) => vm.setProgressPercent(t, p),
                             onEditDueDate: () => _pickDueDateForTask(context, t),
+                            onDelete: () => _confirmDeleteTask(context, t),
                           ),
                         );
                       },
@@ -360,6 +396,7 @@ class _TaskCard extends StatelessWidget {
     required this.onTogglePin,
     required this.onProgress,
     required this.onEditDueDate,
+    required this.onDelete,
   });
 
   final AcademicTask task;
@@ -367,6 +404,7 @@ class _TaskCard extends StatelessWidget {
   final VoidCallback onTogglePin;
   final ValueChanged<int> onProgress;
   final VoidCallback onEditDueDate;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -393,6 +431,14 @@ class _TaskCard extends StatelessWidget {
                   icon: Icon(
                     task.isPinned ? Icons.push_pin : Icons.push_pin_outlined,
                     color: task.isPinned ? AppColors.primary : Colors.grey,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Delete task',
+                  onPressed: onDelete,
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.grey.shade600,
                   ),
                 ),
                 Expanded(

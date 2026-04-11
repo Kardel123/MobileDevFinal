@@ -162,12 +162,75 @@ class ProjectHubViewModel extends ChangeNotifier {
     }
   }
 
+  /// Sets `status` to Completed so the project appears under the Completed tab.
+  Future<void> markProjectCompleted(String projectId) async {
+    try {
+      await _projectService.updateProject(
+        projectId: projectId,
+        status: 'Completed',
+        completion: 100,
+      );
+      await refresh();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  /// Sets `status` back to Active (e.g. from the Completed tab).
+  Future<void> markProjectActive(String projectId) async {
+    try {
+      await _projectService.updateProject(
+        projectId: projectId,
+        status: 'Active',
+      );
+      await refresh();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
   static ProjectItem _mapRow(Map<String, dynamic> row) {
     final c = ProjectService.parseProjectContent(row);
+    var completion = 0;
+    final comp = row['completion'];
+    if (comp is int) {
+      completion = comp.clamp(0, 100);
+    } else if (comp is num) {
+      completion = comp.round().clamp(0, 100);
+    }
     return ProjectItem(
       id: row['id']?.toString() ?? '',
       dueDate: c.due,
       details: c.details,
+      completionPercent: completion,
     );
+  }
+
+  Future<void> setProjectCompletion(String projectId, int percent) async {
+    final p = percent.clamp(0, 100);
+    try {
+      await _projectService.updateProject(
+        projectId: projectId,
+        completion: p,
+      );
+      _projects = _projects
+          .map(
+            (item) => item.id == projectId
+                ? ProjectItem(
+                    id: item.id,
+                    dueDate: item.dueDate,
+                    details: item.details,
+                    completionPercent: p,
+                  )
+                : item,
+          )
+          .toList();
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
   }
 }

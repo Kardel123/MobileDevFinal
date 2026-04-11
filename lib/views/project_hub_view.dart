@@ -202,6 +202,7 @@ class _ProjectHubViewState extends State<ProjectHubView> {
                             child: _ProjectCard(
                               project: vm.projects[i],
                               viewModel: vm,
+                              hubTab: vm.tab,
                               primary: primary,
                               isDark: isDark,
                             ),
@@ -264,12 +265,14 @@ class _ProjectCard extends StatelessWidget {
   const _ProjectCard({
     required this.project,
     required this.viewModel,
+    required this.hubTab,
     required this.primary,
     required this.isDark,
   });
 
   final ProjectItem project;
   final ProjectHubViewModel viewModel;
+  final ProjectHubTab hubTab;
   final Color primary;
   final bool isDark;
 
@@ -317,8 +320,8 @@ class _ProjectCard extends StatelessWidget {
                     project,
                     action,
                   ),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
                       value: _ProjectCardMenuAction.edit,
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -326,7 +329,26 @@ class _ProjectCard extends StatelessWidget {
                         title: Text('Edit'),
                       ),
                     ),
-                    PopupMenuItem(
+                    if (hubTab == ProjectHubTab.active)
+                      const PopupMenuItem(
+                        value: _ProjectCardMenuAction.markComplete,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading:
+                              Icon(Icons.check_circle_outline, size: 22),
+                          title: Text('Mark as complete'),
+                        ),
+                      ),
+                    if (hubTab == ProjectHubTab.completed)
+                      const PopupMenuItem(
+                        value: _ProjectCardMenuAction.reopen,
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.undo_rounded, size: 22),
+                          title: Text('Move to active'),
+                        ),
+                      ),
+                    const PopupMenuItem(
                       value: _ProjectCardMenuAction.remove,
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -362,6 +384,67 @@ class _ProjectCard extends StatelessWidget {
                     : null,
               ),
             ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Text(
+                  'Progress',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${project.completionPercent}%',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: project.completionPercent / 100.0,
+                minHeight: 8,
+                backgroundColor: primary.withValues(alpha: 0.12),
+                color: primary,
+              ),
+            ),
+            if (hubTab == ProjectHubTab.active) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Slider(
+                  value: project.completionPercent.toDouble(),
+                  max: 100,
+                  divisions: 20,
+                  label: '${project.completionPercent}%',
+                  onChanged: (v) => viewModel.setProjectCompletion(
+                    project.id,
+                    v.round(),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonalIcon(
+                  onPressed: () => _showMarkCompleteDialog(
+                    context,
+                    viewModel,
+                    project,
+                  ),
+                  icon: const Icon(Icons.task_alt_rounded, size: 20),
+                  label: const Text('Mark as complete'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -369,7 +452,7 @@ class _ProjectCard extends StatelessWidget {
   }
 }
 
-enum _ProjectCardMenuAction { edit, remove }
+enum _ProjectCardMenuAction { edit, markComplete, reopen, remove }
 
 Future<void> _handleMenuAction(
   BuildContext context,
@@ -381,9 +464,81 @@ Future<void> _handleMenuAction(
     case _ProjectCardMenuAction.edit:
       await _showEditProjectDialog(context, vm, project);
       break;
+    case _ProjectCardMenuAction.markComplete:
+      await _showMarkCompleteDialog(context, vm, project);
+      break;
+    case _ProjectCardMenuAction.reopen:
+      await _showReopenProjectDialog(context, vm, project);
+      break;
     case _ProjectCardMenuAction.remove:
       await _showRemoveProjectDialog(context, vm, project);
       break;
+  }
+}
+
+Future<void> _showMarkCompleteDialog(
+  BuildContext context,
+  ProjectHubViewModel vm,
+  ProjectItem project,
+) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Mark as complete?'),
+      content: const Text(
+        'This project will move to the Completed tab and progress will be set to 100%.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Complete'),
+        ),
+      ],
+    ),
+  );
+  if (!context.mounted || ok != true) return;
+  await vm.markProjectCompleted(project.id);
+  if (!context.mounted) return;
+  final err = vm.errorMessage;
+  if (err != null) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+  }
+}
+
+Future<void> _showReopenProjectDialog(
+  BuildContext context,
+  ProjectHubViewModel vm,
+  ProjectItem project,
+) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Move to active?'),
+      content: const Text(
+        'This project will appear under Active again.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Move to active'),
+        ),
+      ],
+    ),
+  );
+  if (!context.mounted || ok != true) return;
+  await vm.markProjectActive(project.id);
+  if (!context.mounted) return;
+  final err = vm.errorMessage;
+  if (err != null) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
   }
 }
 
