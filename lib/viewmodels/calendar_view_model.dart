@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/academic_task.dart';
-import '../models/calendar_event.dart';
+import '../models/calendar_event.dart' show CalendarEvent, CalendarEventKind;
 import '../models/student_app_context.dart';
 
 /// Week grid vs focused day list (agenda).
@@ -20,6 +20,9 @@ class CalendarViewModel extends ChangeNotifier {
 
   /// Events created via the calendar “Add” dialog (persists across week changes).
   final List<CalendarEvent> _userEvents = [];
+
+  /// Hidden tile ids (demo, task due, enrollment, or user — after removal).
+  final Set<String> _hiddenEventIds = {};
 
   /// Last synced from [TasksViewModel]; due dates rendered as calendar blocks.
   List<AcademicTask> _syncedTasks = [];
@@ -49,13 +52,17 @@ class CalendarViewModel extends ChangeNotifier {
       return !d.isBefore(_weekStart) && !d.isAfter(end);
     }).toList();
     final fromTasks = _calendarEventsFromTasks(_weekStart, end, _syncedTasks);
+    List<CalendarEvent> merged;
     if (_enrollmentWeeklySlots.isNotEmpty) {
       final fromEnroll =
           _eventsFromEnrollmentWeek(_weekStart, _enrollmentWeeklySlots);
-      return [...fromEnroll, ...userInWeek, ...fromTasks];
+      merged = [...fromEnroll, ...userInWeek, ...fromTasks];
+    } else {
+      // No fake "demo" blocks — they repeated every week with the same IDs and
+      // looked static; hiding a demo also hid it forever on every week (bug).
+      merged = [...userInWeek, ...fromTasks];
     }
-    final demo = _seedEventsForWeek(_weekStart);
-    return [...demo, ...userInWeek, ...fromTasks];
+    return merged.where((e) => !_hiddenEventIds.contains(e.id)).toList();
   }
 
   /// Events on [selectedDay] (classes, user events, task due times) within the visible week.
@@ -125,7 +132,13 @@ class CalendarViewModel extends ChangeNotifier {
     ];
     final m1 = months[_weekStart.month - 1];
     final m2 = months[end.month - 1];
-    return '$m1 ${_weekStart.day} - $m2 ${end.day}, ${_weekStart.year}';
+    if (_weekStart.month == end.month && _weekStart.year == end.year) {
+      return '$m1 ${_weekStart.day} – ${end.day}, ${_weekStart.year}';
+    }
+    if (_weekStart.year == end.year) {
+      return '$m1 ${_weekStart.day} – $m2 ${end.day}, ${_weekStart.year}';
+    }
+    return '$m1 ${_weekStart.day}, ${_weekStart.year} – $m2 ${end.day}, ${end.year}';
   }
 
   List<DateTime> get weekDays =>
@@ -142,18 +155,36 @@ class CalendarViewModel extends ChangeNotifier {
     final now = DateTime.now();
     _weekStart = _mondayOf(now);
     _selectedDay = _dateOnly(now);
+    _pruneStaleHiddenEventIds();
     notifyListeners();
+  }
+
+  static String _weekKeyForMonday(DateTime monday) {
+    final d = _dateOnly(monday);
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Drops hidden ids from other weeks so demo/enrollment hides do not persist forever.
+  void _pruneStaleHiddenEventIds() {
+    final key = _weekKeyForMonday(_weekStart);
+    _hiddenEventIds.removeWhere(
+      (id) =>
+          id.startsWith('demo-') ||
+          (id.startsWith('enroll-') && !id.contains(key)),
+    );
   }
 
   void previousWeek() {
     _weekStart = _weekStart.subtract(const Duration(days: 7));
     _selectedDay = _alignSelectedToVisibleWeek();
+    _pruneStaleHiddenEventIds();
     notifyListeners();
   }
 
   void nextWeek() {
     _weekStart = _weekStart.add(const Duration(days: 7));
     _selectedDay = _alignSelectedToVisibleWeek();
+    _pruneStaleHiddenEventIds();
     notifyListeners();
   }
 
@@ -172,16 +203,26 @@ class CalendarViewModel extends ChangeNotifier {
     bool mint = false,
   }) {
     final d = _dateOnly(day);
+    final id = 'user-${DateTime.now().microsecondsSinceEpoch}';
     _userEvents.add(
       CalendarEvent(
+        id: id,
         title: title,
         subtitle: subtitle,
         occurrenceDate: d,
         startHour: startHour,
         endHour: endHour,
         mint: mint,
+        kind: CalendarEventKind.userAdded,
       ),
     );
+    notifyListeners();
+  }
+
+  /// Removes a tile from the calendar (user event or suppresses demo/task/enrollment).
+  void removeEvent(String eventId) {
+    _userEvents.removeWhere((e) => e.id == eventId);
+    _hiddenEventIds.add(eventId);
     notifyListeners();
   }
 
@@ -189,15 +230,18 @@ class CalendarViewModel extends ChangeNotifier {
     DateTime monday,
     List<WeeklyClassSlot> slots,
   ) {
+    final wk = _weekKeyForMonday(monday);
     return [
-      for (final s in slots)
+      for (var i = 0; i < slots.length; i++)
         CalendarEvent(
-          title: s.title,
-          subtitle: s.subtitle,
-          occurrenceDate: monday.add(Duration(days: s.dayOfWeek - 1)),
-          startHour: s.startHour,
-          endHour: s.endHour,
+          id: 'enroll-$wk-$i-${slots[i].title.hashCode}',
+          title: slots[i].title,
+          subtitle: slots[i].subtitle,
+          occurrenceDate: monday.add(Duration(days: slots[i].dayOfWeek - 1)),
+          startHour: slots[i].startHour,
+          endHour: slots[i].endHour,
           mint: false,
+          kind: CalendarEventKind.enrollment,
         ),
     ];
   }
@@ -224,12 +268,15 @@ class CalendarViewModel extends ChangeNotifier {
         final endH = (start + 0.85).clamp(start + 0.5, 17.0);
         out.add(
           CalendarEvent(
+            id: 'task-${t.id}',
             title: t.title,
             subtitle: 'Due • ${t.subject}',
             occurrenceDate: entry.key,
             startHour: start,
             endHour: endH,
             mint: true,
+            kind: CalendarEventKind.taskDue,
+            taskId: t.id,
           ),
         );
       }
@@ -237,53 +284,4 @@ class CalendarViewModel extends ChangeNotifier {
     return out;
   }
 
-  static List<CalendarEvent> _seedEventsForWeek(DateTime monday) {
-    DateTime d(int offset) => monday.add(Duration(days: offset));
-
-    return [
-      CalendarEvent(
-        title: 'Data Science 101',
-        subtitle: 'Rm 402 • 09:00',
-        occurrenceDate: d(0),
-        startHour: 9,
-        endHour: 10.5,
-      ),
-      CalendarEvent(
-        title: 'Library Session',
-        subtitle: 'Calculus Review',
-        occurrenceDate: d(0),
-        startHour: 14,
-        endHour: 15.5,
-        mint: true,
-      ),
-      CalendarEvent(
-        title: 'Economics II',
-        subtitle: 'Lecture Hall A',
-        occurrenceDate: d(1),
-        startHour: 11,
-        endHour: 12.5,
-      ),
-      CalendarEvent(
-        title: 'Data Science 101',
-        subtitle: 'Rm 402',
-        occurrenceDate: d(2),
-        startHour: 9,
-        endHour: 10.5,
-      ),
-      CalendarEvent(
-        title: 'Economics II',
-        subtitle: 'Lecture Hall A',
-        occurrenceDate: d(3),
-        startHour: 11,
-        endHour: 12.5,
-      ),
-      CalendarEvent(
-        title: 'Computer Lab',
-        subtitle: 'Bldg 5',
-        occurrenceDate: d(3),
-        startHour: 15,
-        endHour: 16.5,
-      ),
-    ];
-  }
 }

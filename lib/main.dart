@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'services/deadline_notification_service.dart';
 import 'services/group_service.dart';
+import 'services/project_service.dart';
 import 'services/student_profile_service.dart';
 import 'services/subject_chat_service.dart';
 import 'services/task_service.dart';
@@ -43,6 +44,7 @@ class CampusTaskHubApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final taskService = TaskService();
     final groupService = GroupService();
+    final projectService = ProjectService();
 
     return MultiProvider(
       providers: [
@@ -71,7 +73,10 @@ class CampusTaskHubApp extends StatelessWidget {
             return cal;
           },
         ),
-        ChangeNotifierProvider(create: (_) => ProjectHubViewModel()),
+        Provider<ProjectService>.value(value: projectService),
+        ChangeNotifierProvider(
+          create: (_) => ProjectHubViewModel(groupService, projectService),
+        ),
         ChangeNotifierProvider(create: (_) => ProfileViewModel()),
         Provider<GroupService>.value(value: groupService),
         Provider<TaskService>.value(value: taskService),
