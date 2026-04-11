@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/subject_chat_message.dart';
 import '../services/subject_chat_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/auth_user_display.dart';
 import '../viewmodels/student_context_view_model.dart';
 
 class SubjectChatRoomView extends StatefulWidget {
@@ -31,6 +32,7 @@ class _SubjectChatRoomViewState extends State<SubjectChatRoomView> {
   final _scroll = ScrollController();
   List<SubjectChatMessage> _messages = [];
   Set<String> _facultyIds = {};
+  Map<String, String> _displayNames = {};
   bool _loading = true;
   bool _sending = false;
   String? _error;
@@ -83,6 +85,7 @@ class _SubjectChatRoomViewState extends State<SubjectChatRoomView> {
     setState(() {
       _messages = SubjectChatService.applyRealtimePayload(_messages, payload);
     });
+    unawaited(_loadDisplayNames());
     _scrollToBottom();
   }
 
@@ -93,6 +96,18 @@ class _SubjectChatRoomViewState extends State<SubjectChatRoomView> {
     });
   }
 
+  Future<void> _loadDisplayNames() async {
+    final ids = _messages.map((m) => m.userId).toSet();
+    if (ids.isEmpty) return;
+    try {
+      final map = await _svc.fetchSenderDisplayNames(ids);
+      if (!mounted) return;
+      setState(() => _displayNames = map);
+    } catch (_) {
+      /* RLS or missing table — fall back to Teacher/Student labels */
+    }
+  }
+
   Future<void> _reload({bool silent = false}) async {
     try {
       final list = await _svc.fetchMessages(widget.catalogSubjectId);
@@ -101,6 +116,7 @@ class _SubjectChatRoomViewState extends State<SubjectChatRoomView> {
         _messages = list;
         _error = null;
       });
+      await _loadDisplayNames();
       _scrollToBottom();
     } catch (e) {
       if (!mounted || silent) return;
@@ -162,10 +178,25 @@ class _SubjectChatRoomViewState extends State<SubjectChatRoomView> {
     }
   }
 
-  String _labelFor(String userId) {
+  String _senderDisplayName(SubjectChatMessage m) {
     final me = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == me) return 'You';
-    if (_facultyIds.contains(userId)) return 'Teacher';
+    final user = Supabase.instance.client.auth.currentUser;
+
+    final stored = m.senderDisplayName?.trim();
+    if (stored != null && stored.isNotEmpty) {
+      if (m.userId == me) return '$stored (You)';
+      return stored;
+    }
+
+    if (m.userId == me) {
+      final self = AuthUserDisplay.fromUser(user).displayName;
+      return '$self (You)';
+    }
+    final fromProfile = _displayNames[m.userId];
+    if (fromProfile != null && fromProfile.isNotEmpty) {
+      return fromProfile;
+    }
+    if (_facultyIds.contains(m.userId)) return 'Teacher';
     return 'Student';
   }
 
@@ -277,32 +308,54 @@ class _SubjectChatRoomViewState extends State<SubjectChatRoomView> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: teacher
-                                                ? Colors.amber.shade100
-                                                : Colors.blueGrey.shade100,
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            _labelFor(m.userId),
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w800,
-                                              color: teacher
-                                                  ? Colors.amber.shade900
-                                                  : Colors.blueGrey.shade800,
-                                            ),
+                                        Expanded(
+                                          child: Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  _senderDisplayName(m),
+                                                  style: const TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                  maxLines: 2,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (teacher) ...[
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.amber.shade100,
+                                                    borderRadius:
+                                                        BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    'Staff',
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.w800,
+                                                      color:
+                                                          Colors.amber.shade900,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
                                           ),
                                         ),
-                                        const Spacer(),
+                                        const SizedBox(width: 8),
                                         Text(
-                                          DateFormat.jm().format(m.createdAt.toLocal()),
+                                          DateFormat('MMM d, y • h:mm a')
+                                              .format(m.createdAt.toLocal()),
                                           style: TextStyle(
                                             fontSize: 11,
                                             color: Colors.grey.shade700,

@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/student_app_context.dart';
 import '../models/subject_chat_message.dart';
+import '../utils/auth_user_display.dart';
 
 /// Per-subject chat for enrolled students and assigned faculty (see `subject_faculty`).
 class SubjectChatService {
@@ -80,6 +81,25 @@ class SubjectChatService {
     return row != null;
   }
 
+  /// [full_name] from [student_profiles] for chat sender labels (best-effort).
+  Future<Map<String, String>> fetchSenderDisplayNames(Set<String> userIds) async {
+    if (userIds.isEmpty) return {};
+    final rows = await _c
+        .from('student_profiles')
+        .select('user_id, full_name')
+        .inFilter('user_id', userIds.toList());
+    final out = <String, String>{};
+    for (final r in rows as List) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final uid = m['user_id'] as String?;
+      final fn = (m['full_name'] as String?)?.trim();
+      if (uid != null && fn != null && fn.isNotEmpty) {
+        out[uid] = fn;
+      }
+    }
+    return out;
+  }
+
   Future<List<SubjectChatMessage>> fetchMessages(String catalogSubjectId,
       {int limit = 100}) async {
     final data = await _c
@@ -94,6 +114,21 @@ class SubjectChatService {
     ];
   }
 
+  Future<String> _resolveMyDisplayNameForInsert() async {
+    final user = _c.auth.currentUser;
+    if (user == null) return 'Member';
+    final row = await _c
+        .from('student_profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+    final fn = row != null
+        ? (row['full_name'] as String?)?.trim()
+        : null;
+    if (fn != null && fn.isNotEmpty) return fn;
+    return AuthUserDisplay.fromUser(user).displayName;
+  }
+
   Future<void> sendMessage({
     required String catalogSubjectId,
     required String body,
@@ -102,11 +137,33 @@ class SubjectChatService {
     if (uid == null) throw StateError('Not signed in');
     final trimmed = body.trim();
     if (trimmed.isEmpty) return;
-    await _c.from('subject_chat_messages').insert({
+
+    final label = await _resolveMyDisplayNameForInsert();
+
+    final withName = <String, dynamic>{
       'catalog_subject_id': catalogSubjectId,
       'user_id': uid,
       'body': trimmed,
-    });
+      'sender_display_name': label,
+    };
+    final minimal = <String, dynamic>{
+      'catalog_subject_id': catalogSubjectId,
+      'user_id': uid,
+      'body': trimmed,
+    };
+
+    try {
+      await _c.from('subject_chat_messages').insert(withName);
+    } catch (e) {
+      final s = e.toString();
+      if (s.contains('sender_display_name') ||
+          s.contains('PGRST204') ||
+          s.contains('column')) {
+        await _c.from('subject_chat_messages').insert(minimal);
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> deleteMessage(String messageId) async {

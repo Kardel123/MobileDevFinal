@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../models/calendar_event.dart';
+import '../models/calendar_event.dart' show CalendarEvent, CalendarEventKind;
 import '../theme/app_colors.dart';
 import '../viewmodels/calendar_view_model.dart';
 import '../viewmodels/student_context_view_model.dart';
@@ -53,6 +53,7 @@ class WeeklyCalendarView extends StatelessWidget {
                     primary: primary,
                     accent: accent,
                     isDark: isDark,
+                    onDeleteEvent: (id) => vm.removeEvent(id),
                   )
                 : _WeekGridPanel(
                     vm: vm,
@@ -243,6 +244,7 @@ class _WeekGridPanelState extends State<_WeekGridPanel> {
                             ),
                           ...visible.map(
                             (e) => _EventBlock(
+                              vm: vm,
                               event: e,
                               columnIndex: vm.columnForEvent(e),
                               dayWidth: dayWidth,
@@ -311,12 +313,14 @@ class _DayAgendaPanel extends StatelessWidget {
     required this.primary,
     required this.accent,
     required this.isDark,
+    required this.onDeleteEvent,
   });
 
   final CalendarViewModel vm;
   final Color primary;
   final Color accent;
   final bool isDark;
+  final void Function(String eventId) onDeleteEvent;
 
   @override
   Widget build(BuildContext context) {
@@ -383,6 +387,15 @@ class _DayAgendaPanel extends StatelessWidget {
                       ),
                     ),
                     isThreeLine: true,
+                    trailing: IconButton(
+                      tooltip: 'Remove from calendar',
+                      icon: Icon(Icons.delete_outline_rounded,
+                          color: Colors.grey.shade600),
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        onDeleteEvent(e.id);
+                      },
+                    ),
                   ),
                 );
               },
@@ -451,7 +464,7 @@ class _ScheduleHeader extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Swipe days below · tap a column to focus · + for your events',
+                          'Arrows change week · tap a day to focus · + add an event',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.82),
@@ -1002,6 +1015,7 @@ class _GridLines extends StatelessWidget {
 
 class _EventBlock extends StatelessWidget {
   const _EventBlock({
+    required this.vm,
     required this.event,
     required this.columnIndex,
     required this.dayWidth,
@@ -1011,6 +1025,7 @@ class _EventBlock extends StatelessWidget {
     required this.collegeAccent,
   });
 
+  final CalendarViewModel vm;
   final CalendarEvent event;
   final int columnIndex;
   final double dayWidth;
@@ -1123,6 +1138,22 @@ class _EventBlock extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: collegePrimary,
                         fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          vm.removeEvent(event.id);
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded),
+                        label: Text(
+                          event.kind == CalendarEventKind.taskDue
+                              ? 'Hide from calendar'
+                              : 'Remove from calendar',
+                        ),
                       ),
                     ),
                   ],

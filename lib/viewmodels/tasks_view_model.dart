@@ -219,6 +219,35 @@ class TasksViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> updateTaskDueDate(AcademicTask task, DateTime dueDate) async {
+    final d = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    try {
+      await _taskService.updateTask(taskId: task.id, dueDate: d);
+      _tasks = _tasks
+          .map(
+            (t) => t.id == task.id
+                ? AcademicTask(
+                    id: t.id,
+                    subject: t.subject,
+                    title: t.title,
+                    dueDate: d,
+                    priority: t.priority,
+                    status: t.status,
+                    isPinned: t.isPinned,
+                    progressPercent: t.progressPercent,
+                  )
+                : t,
+          )
+          .toList();
+      _tasks = _sortTasks(_tasks);
+      notifyListeners();
+      await _syncDeadlineNotifications();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
   Future<void> setProgressPercent(AcademicTask task, int percent) async {
     final p = percent.clamp(0, 100);
     try {

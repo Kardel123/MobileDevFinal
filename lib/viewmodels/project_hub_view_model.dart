@@ -1,29 +1,48 @@
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/project_model.dart';
 import '../models/student_app_context.dart';
+import '../services/group_service.dart';
+import '../services/project_service.dart';
 
-/// Project Hub tabs and list (View: [ProjectHubView]).
+/// Project Hub backed by Supabase `projects` (View: [ProjectHubView]).
 class ProjectHubViewModel extends ChangeNotifier {
-  ProjectHubViewModel() {
-    _tab = ProjectHubTab.active;
-    _projects = _neutralPlaceholderProjects();
-  }
+  ProjectHubViewModel(this._groupService, this._projectService);
+
+  final GroupService _groupService;
+  final ProjectService _projectService;
 
   ProjectHubTab _tab = ProjectHubTab.active;
-  late List<ProjectItem> _projects;
+  List<ProjectItem> _projects = [];
+  Map<String, int> _statusCounts = {};
+  bool _loading = false;
+  String? _errorMessage;
 
   ProjectHubTab get tab => _tab;
   List<ProjectItem> get projects => List.unmodifiable(_projects);
+  bool get loading => _loading;
+  String? get errorMessage => _errorMessage;
+
+  static String _statusForTab(ProjectHubTab t) {
+    switch (t) {
+      case ProjectHubTab.active:
+        return 'Active';
+      case ProjectHubTab.completed:
+        return 'Completed';
+      case ProjectHubTab.requests:
+        return 'Request';
+    }
+  }
 
   int countFor(ProjectHubTab t) {
     switch (t) {
       case ProjectHubTab.active:
-        return _projects.length;
+        return _statusCounts['active'] ?? 0;
       case ProjectHubTab.completed:
-        return 0;
+        return _statusCounts['completed'] ?? 0;
       case ProjectHubTab.requests:
-        return 0;
+        return _statusCounts['requests'] ?? 0;
     }
   }
 
@@ -31,116 +50,124 @@ class ProjectHubViewModel extends ChangeNotifier {
     if (value == _tab) return;
     _tab = value;
     notifyListeners();
+    refresh();
   }
 
-  /// Rebuilds sample projects so titles/tags reflect the student’s college and enrollments.
-  void applyStudentContext(StudentAppContext? ctx) {
-    _projects = ctx == null ? _neutralPlaceholderProjects() : _projectsForCollege(ctx);
+  void clearError() {
+    if (_errorMessage == null) return;
+    _errorMessage = null;
     notifyListeners();
   }
 
-  /// After sign-out, before the next session loads context.
-  void resetForGuest() {
-    _projects = _neutralPlaceholderProjects();
-    _tab = ProjectHubTab.active;
-    notifyListeners();
-  }
-
-  void updateNextStep(String projectId, String nextStep) {
-    final trimmed = nextStep.trim();
-    if (trimmed.isEmpty) return;
-    _projects = _projects
-        .map(
-          (p) => p.id == projectId
-              ? ProjectItem(
-                  id: p.id,
-                  tag: p.tag,
-                  title: p.title,
-                  completion: p.completion,
-                  nextStep: trimmed,
-                  avatarCount: p.avatarCount,
-                  extraMembers: p.extraMembers,
-                )
-              : p,
-        )
-        .toList();
-    notifyListeners();
-  }
-
-  void removeProject(String projectId) {
-    _projects = _projects.where((p) => p.id != projectId).toList();
-    notifyListeners();
-  }
-
-  static List<ProjectItem> _neutralPlaceholderProjects() {
-    return const [
-      ProjectItem(
-        id: 'g1',
-        tag: 'GROUP',
-        title: 'Group milestone — check with your adviser',
-        completion: 0.4,
-        nextStep: 'Confirm submission format and deadline',
-        avatarCount: 2,
-        extraMembers: 1,
-      ),
-      ProjectItem(
-        id: 'g2',
-        tag: 'RESEARCH',
-        title: 'Literature / source packet',
-        completion: 0.65,
-        nextStep: 'Add two peer-reviewed references',
-        avatarCount: 1,
-        extraMembers: 0,
-      ),
-      ProjectItem(
-        id: 'g3',
-        tag: 'PORTFOLIO',
-        title: 'Portfolio or reflection set',
-        completion: 0.2,
-        nextStep: 'Draft outline for faculty review',
-        avatarCount: 3,
-        extraMembers: 0,
-      ),
-    ];
-  }
-
-  static List<ProjectItem> _projectsForCollege(StudentAppContext ctx) {
-    final words = ctx.collegeName.trim().split(RegExp(r'\s+'));
-    final short = words.isNotEmpty ? words.first : 'College';
-    final codes = ctx.subjects.map((s) => s.code.toUpperCase()).toList();
-    String tagAt(int i) {
-      if (codes.length > i) return codes[i];
-      return ['CAPSTONE', 'SYMPOSIUM', 'INITIATIVE'][i % 3];
+  /// Loads projects for the current tab from Supabase.
+  Future<void> refresh() async {
+    if (Supabase.instance.client.auth.currentUser == null) {
+      _projects = [];
+      notifyListeners();
+      return;
     }
 
-    return [
-      ProjectItem(
-        id: 'p1',
-        tag: tagAt(0),
-        title: '$short — integrative output / capstone prep',
-        completion: 0.72,
-        nextStep: 'Submit draft for faculty or program head review',
-        avatarCount: 3,
-        extraMembers: 1,
-      ),
-      ProjectItem(
-        id: 'p2',
-        tag: tagAt(1),
-        title: 'Cross-team deliverable (${ctx.collegeName})',
-        completion: 0.38,
-        nextStep: 'Align schedules and assign section owners',
-        avatarCount: 2,
-        extraMembers: 0,
-      ),
-      ProjectItem(
-        id: 'p3',
-        tag: tagAt(2),
-        title: '${ctx.collegeName} showcase or practicum packet',
-        completion: 0.55,
-        nextStep: 'Finalize poster, deck, or clinical checklist',
-        avatarCount: 4,
-        extraMembers: 2,
-      ),
-    ];
+    _loading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final groupId = await _groupService.ensureDefaultGroup();
+      _statusCounts = await _projectService.getProjectCounts(groupId);
+      final status = _statusForTab(_tab);
+      final raw = await _projectService.getProjectsByStatus(groupId, status);
+      _projects = [
+        for (var i = 0; i < raw.length; i++)
+          _mapRow(Map<String, dynamic>.from(raw[i] as Map)),
+      ];
+    } catch (e) {
+      _errorMessage = e.toString();
+      _projects = [];
+    } finally {
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  void applyStudentContext(StudentAppContext? ctx) {
+    if (ctx == null) {
+      resetForGuest();
+      return;
+    }
+    refresh();
+  }
+
+  void resetForGuest() {
+    _projects = [];
+    _tab = ProjectHubTab.active;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
+  Future<bool> addProject({
+    required DateTime dueDate,
+    required String details,
+  }) async {
+    if (details.trim().isEmpty) return false;
+
+    try {
+      final groupId = await _groupService.ensureDefaultGroup();
+      await _projectService.createProject(
+        groupId: groupId,
+        dueDate: dueDate,
+        details: details.trim(),
+      );
+      if (_tab == ProjectHubTab.active) {
+        await refresh();
+      } else {
+        _tab = ProjectHubTab.active;
+        await refresh();
+      }
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> updateProjectDetails({
+    required String projectId,
+    required DateTime dueDate,
+    required String details,
+  }) async {
+    if (details.trim().isEmpty) return;
+    final d = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    try {
+      await _projectService.updateProject(
+        projectId: projectId,
+        dueDate: d,
+        nextStep: details.trim(),
+        title: ProjectService.shortTitleFromDetails(details.trim(), d),
+      );
+      await refresh();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeProject(String projectId) async {
+    try {
+      await _projectService.deleteProject(projectId);
+      await refresh();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  static ProjectItem _mapRow(Map<String, dynamic> row) {
+    final c = ProjectService.parseProjectContent(row);
+    return ProjectItem(
+      id: row['id']?.toString() ?? '',
+      dueDate: c.due,
+      details: c.details,
+    );
   }
 }

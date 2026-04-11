@@ -29,67 +29,109 @@ class _TasksViewState extends State<TasksView> {
   Future<void> _showAddTaskDialog(BuildContext context) async {
     final titleCtrl = TextEditingController();
     final subjectCtrl = TextEditingController(text: 'General');
+    var dueDate = DateTime.now().add(const Duration(days: 7));
 
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New task'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Title'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('New task'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleCtrl,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Title'),
+                  ),
+                  TextField(
+                    controller: subjectCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'Subject / course'),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.event_outlined),
+                    title: const Text('Due date'),
+                    subtitle: Text(DateFormat.yMMMd().format(dueDate)),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: dueDate,
+                        firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                        lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+                      );
+                      if (picked != null) {
+                        setDialogState(() => dueDate = picked);
+                      }
+                    },
+                  ),
+                ],
               ),
-              TextField(
-                controller: subjectCtrl,
-                decoration: const InputDecoration(labelText: 'Subject / course'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Add'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add'),
-          ),
-        ],
+          );
+        },
       ),
     );
 
+    if (!context.mounted) return;
     final title = titleCtrl.text.trim();
     final subject = subjectCtrl.text;
-
-    void disposeCtrls() {
+    // Defer dispose until the dialog route has unmounted (avoids framework assertions).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       titleCtrl.dispose();
       subjectCtrl.dispose();
-    }
-
-    // Let the dialog route + IME finish unmounting before disposing controllers.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      disposeCtrls();
-      if (!mounted) return;
-      if (ok != true || title.isEmpty) return;
-
-      final messenger = ScaffoldMessenger.of(context);
-      final vm = context.read<TasksViewModel>();
-      final success = await vm.addTask(
-        title: title,
-        subject: subject,
-        priority: TaskPriority.med,
-      );
-      if (!mounted) return;
-      if (!success && vm.errorMessage != null) {
-        messenger.showSnackBar(SnackBar(content: Text(vm.errorMessage!)));
-      }
     });
+
+    if (ok != true || title.isEmpty) return;
+
+    final vm = context.read<TasksViewModel>();
+    final success = await vm.addTask(
+      title: title,
+      subject: subject,
+      priority: TaskPriority.med,
+      dueDate: dueDate,
+    );
+    if (!context.mounted) return;
+    if (!success && vm.errorMessage != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(vm.errorMessage!)));
+    }
+  }
+
+  Future<void> _pickDueDateForTask(
+    BuildContext context,
+    AcademicTask task,
+  ) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: task.dueDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+    );
+    if (picked == null || !context.mounted) return;
+    final vm = context.read<TasksViewModel>();
+    await vm.updateTaskDueDate(task, picked);
+    if (!context.mounted) return;
+    final err = vm.errorMessage;
+    if (err != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    }
   }
 
   @override
@@ -180,6 +222,7 @@ class _TasksViewState extends State<TasksView> {
                             onToggleDone: () => vm.toggleTaskDone(t),
                             onTogglePin: () => vm.togglePin(t),
                             onProgress: (p) => vm.setProgressPercent(t, p),
+                            onEditDueDate: () => _pickDueDateForTask(context, t),
                           ),
                         );
                       },
@@ -316,12 +359,14 @@ class _TaskCard extends StatelessWidget {
     required this.onToggleDone,
     required this.onTogglePin,
     required this.onProgress,
+    required this.onEditDueDate,
   });
 
   final AcademicTask task;
   final VoidCallback onToggleDone;
   final VoidCallback onTogglePin;
   final ValueChanged<int> onProgress;
+  final VoidCallback onEditDueDate;
 
   @override
   Widget build(BuildContext context) {
@@ -384,19 +429,34 @@ class _TaskCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(left: 48, right: 0, top: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today_outlined,
-                      size: 16, color: Color(0xFF9E9E9E)),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Due: $due',
-                    style: TextStyle(
-                      color: done ? Colors.grey : const Color(0xFF757575),
-                      fontSize: 13,
-                    ),
+              child: InkWell(
+                onTap: done ? null : onEditDueDate,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 16, color: Color(0xFF9E9E9E)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Due: $due · tap to change',
+                          style: TextStyle(
+                            color: done ? Colors.grey : const Color(0xFF757575),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      if (!done)
+                        Icon(
+                          Icons.edit_outlined,
+                          size: 16,
+                          color: AppColors.primary.withValues(alpha: 0.7),
+                        ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
             if (!done) ...[

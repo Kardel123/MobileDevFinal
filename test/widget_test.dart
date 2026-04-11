@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:campus_taskhub/services/group_service.dart';
+import 'package:campus_taskhub/services/project_service.dart';
 import 'package:campus_taskhub/services/student_profile_service.dart';
 import 'package:campus_taskhub/services/subject_chat_service.dart';
 import 'package:campus_taskhub/services/task_service.dart';
@@ -21,6 +22,7 @@ void main() {
   testWidgets('Dashboard shows portal title', (WidgetTester tester) async {
     final taskService = TaskService();
     final groupService = GroupService();
+    final projectService = ProjectService();
 
     await tester.pumpWidget(
       MultiProvider(
@@ -49,7 +51,10 @@ void main() {
               return cal;
             },
           ),
-          ChangeNotifierProvider(create: (_) => ProjectHubViewModel()),
+          Provider<ProjectService>.value(value: projectService),
+          ChangeNotifierProvider(
+            create: (_) => ProjectHubViewModel(groupService, projectService),
+          ),
           ChangeNotifierProvider(create: (_) => ProfileViewModel()),
           Provider<GroupService>.value(value: groupService),
           Provider<TaskService>.value(value: taskService),
